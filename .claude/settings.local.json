@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs grep *)",
+      "Bash(python -c \"from my_writing.providers.openai_provider import OpenAIImageProvider; print\\('ok'\\)\")",
+      "Bash(python -c \"from my_writing.app import app; print\\('ok'\\)\")",
+      "Bash(node --input-type=module)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

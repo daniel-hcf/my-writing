@@ -1,0 +1,9 @@
+data.db
+data.db-journal
+__pycache__/
+*.pyc
+.venv/
+.env
+*.egg-info/
+.idea/
+.vscode/
