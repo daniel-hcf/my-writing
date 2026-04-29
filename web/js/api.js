@@ -1,12 +1,30 @@
+const TOKEN_KEY = "auth_token";
+
+export function saveToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
 async function request(method, path, body) {
   const opts = {
     method,
     headers: { "Content-Type": "application/json" },
   };
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) opts.headers["Authorization"] = `Bearer ${token}`;
   if (body !== undefined) opts.body = JSON.stringify(body);
+
   const r = await fetch(path, opts);
   let data = null;
   try { data = await r.json(); } catch {}
+
+  if (r.status === 401) {
+    clearToken();
+    throw new Error("UNAUTHORIZED");
+  }
   if (!r.ok) {
     const msg = (data && (data.detail || data.message)) || r.statusText;
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
@@ -15,6 +33,10 @@ async function request(method, path, body) {
 }
 
 export const api = {
+  authStatus: () => request("GET", "/api/auth/status"),
+  login: (password) => request("POST", "/api/auth/login", { password }),
+  setup: (password) => request("POST", "/api/auth/setup", { password }),
+
   getConfig: () => request("GET", "/api/config"),
   putConfig: (cfg) => request("PUT", "/api/config", cfg),
   testProvider: (target) => request("POST", "/api/ai/test", { target }),

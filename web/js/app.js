@@ -1,9 +1,10 @@
-import { api } from "./api.js";
+import { api, clearToken } from "./api.js";
 import { showToast } from "./utils.js";
 import { renderDaily } from "./views/daily.js";
 import { renderHistory } from "./views/history.js";
 import { renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
+import { checkAuth, showAuthScreen } from "./auth.js";
 
 const views = {
   daily: renderDaily,
@@ -55,7 +56,34 @@ document.querySelectorAll("#tabs .tab").forEach((btn) => {
   btn.addEventListener("click", () => navigate(btn.dataset.tab));
 });
 
-(async function boot() {
+document.getElementById("logout-btn")?.addEventListener("click", () => {
+  clearToken();
+  location.reload();
+});
+
+window.addEventListener("unhandledrejection", (e) => {
+  if (e.reason?.message === "UNAUTHORIZED") {
+    showToast("登录已过期，请重新登录", "error");
+    clearToken();
+    setTimeout(() => location.reload(), 1500);
+  }
+});
+
+async function startApp() {
   await refreshConfig();
   await navigate(state.ready.text ? "daily" : "settings");
+}
+
+(async function boot() {
+  try {
+    const authed = await checkAuth();
+    if (!authed) {
+      await showAuthScreen(startApp);
+      return;
+    }
+    await startApp();
+  } catch (e) {
+    console.error("启动失败", e);
+    showToast("连接服务失败，请刷新重试", "error");
+  }
 })();

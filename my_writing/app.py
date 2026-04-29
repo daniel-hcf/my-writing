@@ -3,12 +3,13 @@ import threading
 import time
 import webbrowser
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from .auth import require_auth
 from .config import HOST, PORT, WEB_DIR
 from .db import init_db
-from .routers import ai_test, assignments, config as config_router, stats, submissions
+from .routers import ai_test, assignments, auth, config as config_router, stats, submissions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,11 +22,14 @@ def create_app() -> FastAPI:
     init_db()
     app = FastAPI(title="my-writing", version="0.1.0")
 
-    app.include_router(config_router.router)
-    app.include_router(ai_test.router)
-    app.include_router(assignments.router)
-    app.include_router(submissions.router)
-    app.include_router(stats.router)
+    app.include_router(auth.router)
+
+    protected = {"dependencies": [Depends(require_auth)]}
+    app.include_router(config_router.router, **protected)
+    app.include_router(ai_test.router, **protected)
+    app.include_router(assignments.router, **protected)
+    app.include_router(submissions.router, **protected)
+    app.include_router(stats.router, **protected)
 
     if WEB_DIR.exists():
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
