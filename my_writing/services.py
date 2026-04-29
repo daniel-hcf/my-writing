@@ -56,7 +56,10 @@ def parse_json_loose(text: str) -> dict:
 def latest_weakest_dimension() -> str | None:
     with connect() as conn:
         row = conn.execute(
-            "SELECT scores FROM submissions ORDER BY id DESC LIMIT 1"
+            """SELECT s.scores FROM submissions s
+               JOIN assignments a ON a.id = s.assignment_id
+               WHERE a.type != 'journal'
+               ORDER BY s.id DESC LIMIT 1"""
         ).fetchone()
     if not row:
         return None
@@ -73,11 +76,57 @@ def latest_weakest_dimension() -> str | None:
 
 # ---- 作业生成 ------------------------------------------------------------
 
-async def generate_assignment(focus: str | None, cfg: FullConfig) -> dict:
+def recent_assignment_titles(n: int = 10) -> list[str]:
+    """
+    返回去重后的题目标题列表，供 AI 避免重复：
+    - 今天出过的所有题（不管有没有提交），防止当天反复换题时重出
+    - 加上最近 n 条提交过的题，做长期去重
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    with connect() as conn:
+        today_rows = conn.execute(
+            "SELECT title FROM assignments WHERE type != 'journal' AND date = ? ORDER BY id DESC",
+            (today,),
+        ).fetchall()
+        submitted_rows = conn.execute(
+            """SELECT a.title FROM assignments a
+               INNER JOIN submissions s ON s.assignment_id = a.id
+               WHERE a.type != 'journal'
+               ORDER BY s.id DESC LIMIT ?""",
+            (n,),
+        ).fetchall()
+    seen: set[str] = set()
+    result: list[str] = []
+    for r in [*today_rows, *submitted_rows]:
+        t = r["title"]
+        if t and t not in seen:
+            seen.add(t)
+            result.append(t)
+    return result
+
+
+def cleanup_orphan_assignments() -> None:
+    """删除历史上从未提交的非随笔作业（今天的保留，以防用户还在写）。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    with connect() as conn:
+        conn.execute(
+            """DELETE FROM assignments
+               WHERE type != 'journal'
+               AND date < ?
+               AND id NOT IN (SELECT assignment_id FROM submissions)""",
+            (today,),
+        )
+
+
+async def generate_assignment(
+    focus: str | None,
+    cfg: FullConfig,
+    recent_titles: list[str] | None = None,
+) -> dict:
     text_provider = get_text_provider(cfg.text)
     raw = await text_provider.chat(
         prompts.assignment_system(),
-        prompts.assignment_user(focus),
+        prompts.assignment_user(focus, recent_titles),
     )
     data = parse_json_loose(raw)
 
@@ -140,10 +189,15 @@ def insert_assignment(data: dict, date: str) -> int:
         return cur.lastrowid
 
 
-def get_assignment_by_date(date: str) -> sqlite3.Row | None:
+def get_assignment_by_date(date: str, type_filter: str | None = None) -> sqlite3.Row | None:
     with connect() as conn:
+        if type_filter:
+            return conn.execute(
+                "SELECT * FROM assignments WHERE date = ? AND type = ? ORDER BY id DESC LIMIT 1",
+                (date, type_filter),
+            ).fetchone()
         return conn.execute(
-            "SELECT * FROM assignments WHERE date = ? ORDER BY id DESC LIMIT 1",
+            "SELECT * FROM assignments WHERE date = ? AND type != 'journal' ORDER BY id DESC LIMIT 1",
             (date,),
         ).fetchone()
 
@@ -161,12 +215,28 @@ def get_submission_by_assignment(assignment_id: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
+def get_or_create_journal_assignment(date: str) -> dict:
+    row = get_assignment_by_date(date, type_filter="journal")
+    if not row:
+        aid = insert_assignment(
+            {"type": "journal", "title": "每日随笔", "scenario": None, "image_data": None, "focus_dimension": None},
+            date,
+        )
+        row = get_assignment_by_id(aid)
+    result = assignment_row_to_dict(row)
+    sub = get_submission_by_assignment(row["id"])
+    if sub:
+        result["submission"] = submission_row_to_dict(sub)
+    return result
+
+
 async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
     row = get_assignment_by_date(today)
     if not row:
         focus = latest_weakest_dimension()
-        data = await generate_assignment(focus, cfg)
+        recent = recent_assignment_titles()
+        data = await generate_assignment(focus, cfg, recent)
         aid = insert_assignment(data, today)
         row = get_assignment_by_id(aid)
 
@@ -303,7 +373,8 @@ async def pre_generate_tomorrow(cfg: FullConfig) -> None:
         return
     try:
         focus = latest_weakest_dimension()
-        data = await generate_assignment(focus, cfg)
+        recent = recent_assignment_titles()
+        data = await generate_assignment(focus, cfg, recent)
         insert_assignment(data, target)
     except Exception as e:
         log.warning("预生成明日作业失败：%s", e)
@@ -314,7 +385,10 @@ async def pre_generate_tomorrow(cfg: FullConfig) -> None:
 def collect_stats() -> dict:
     with connect() as conn:
         rows = conn.execute(
-            "SELECT date, scores FROM submissions ORDER BY id ASC"
+            """SELECT s.date, s.scores FROM submissions s
+               JOIN assignments a ON a.id = s.assignment_id
+               WHERE a.type != 'journal'
+               ORDER BY s.id ASC"""
         ).fetchall()
 
     if not rows:
@@ -326,7 +400,7 @@ def collect_stats() -> dict:
             s = json.loads(r["scores"])
         except json.JSONDecodeError:
             continue
-        series.append({"date": r["date"], "scores": s})
+        series.append({"date": r["date"], "scores": s})  # noqa: using r["scores"] already parsed
 
     latest = series[-1]["scores"] if series else None
     avg = {}

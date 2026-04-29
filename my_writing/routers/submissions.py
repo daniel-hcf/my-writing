@@ -19,7 +19,9 @@ async def create(payload: SubmissionCreate, background: BackgroundTasks):
     cfg = load_full_config()
     if not is_text_configured(cfg):
         raise HTTPException(status_code=400, detail="文本模型未配置")
-    if len(payload.content) < MIN_CHAR_COUNT:
+    with connect() as conn:
+        arow = conn.execute("SELECT type FROM assignments WHERE id = ?", (payload.assignmentId,)).fetchone()
+    if (not arow or arow["type"] != "journal") and len(payload.content) < MIN_CHAR_COUNT:
         raise HTTPException(status_code=400, detail=f"作品至少 {MIN_CHAR_COUNT} 字")
     try:
         result = await score_submission(payload.assignmentId, payload.content, cfg)
@@ -63,3 +65,13 @@ def by_id(sid: int):
     if not row:
         raise HTTPException(status_code=404, detail="记录不存在")
     return submission_row_to_dict(row)
+
+
+@router.delete("/{sid}")
+def delete(sid: int):
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM submissions WHERE id = ?", (sid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="记录不存在")
+        conn.execute("DELETE FROM submissions WHERE id = ?", (sid,))
+    return {"ok": True}

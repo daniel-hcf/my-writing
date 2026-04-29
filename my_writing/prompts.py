@@ -12,16 +12,20 @@ def assignment_system() -> str:
     )
 
 
-def assignment_user(focus: str | None) -> str:
+def assignment_user(focus: str | None, recent_titles: list[str] | None = None) -> str:
     focus_line = (
         f"本次重点训练维度：{focus}。请构造一个能凸显该维度训练价值的题材，并把训练点写进 title。"
         if focus
         else "这是学员的首次练习，请综合考察各维度。"
     )
+    recent_block = ""
+    if recent_titles:
+        items = "\n".join(f"  - {t}" for t in recent_titles)
+        recent_block = f"\n\n近期已出过的题目（请避免重复类似题材和场景）：\n{items}\n"
     return f"""
 请设计一道中文创意写作题，目标字数 500 字以上。
 
-{focus_line}
+{focus_line}{recent_block}
 
 可选维度共 7 个：{DIMENSION_LIST}。
 

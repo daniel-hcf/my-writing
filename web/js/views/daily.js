@@ -35,9 +35,27 @@ function renderAssignment(root, ctx, a) {
     ? el("span", { class: "focus-tag" }, "本次专项：" + a.focusDimension)
     : null;
 
+  const changeBtn = el("button", { class: "btn secondary btn-sm" }, "换一道");
+  changeBtn.addEventListener("click", async () => {
+    changeBtn.disabled = true;
+    changeBtn.textContent = "生成中...";
+    try {
+      const next = await api.newAssignment();
+      renderAssignment(root, ctx, next);
+    } catch (e) {
+      showToast("换题失败：" + e.message, "error");
+      changeBtn.disabled = false;
+      changeBtn.textContent = "换一道";
+    }
+  });
+
   const card = el("div", { class: "card" }, [
     el("h2", {}, [a.title || "今日写作练习", focusTag]),
-    el("div", { class: "muted" }, `日期：${a.date} · 类型：${a.type === "image" ? "看图写作" : "场景写作"}`),
+    el("div", { class: "row", style: "margin-top:2px;" }, [
+      el("div", { class: "muted" }, `日期：${a.date} · 类型：${a.type === "image" ? "看图写作" : "场景写作"}`),
+      el("div", { class: "spacer" }),
+      changeBtn,
+    ]),
   ]);
 
   if (a.type === "image" && a.imageData) {

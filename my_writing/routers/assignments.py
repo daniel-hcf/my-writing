@@ -4,13 +4,16 @@ from fastapi import APIRouter, HTTPException
 
 from ..services import (
     assignment_row_to_dict,
+    cleanup_orphan_assignments,
     generate_assignment,
     get_assignment_by_id,
+    get_or_create_journal_assignment,
     get_or_create_today_assignment,
     insert_assignment,
     is_text_configured,
     latest_weakest_dimension,
     load_full_config,
+    recent_assignment_titles,
 )
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
@@ -34,13 +37,21 @@ async def new_assignment():
     if not is_text_configured(cfg):
         raise HTTPException(status_code=400, detail="文本模型未配置，请先到设置页填写。")
     try:
+        cleanup_orphan_assignments()
         focus = latest_weakest_dimension()
-        data = await generate_assignment(focus, cfg)
+        recent = recent_assignment_titles()
+        data = await generate_assignment(focus, cfg, recent)
         today = datetime.now().strftime("%Y-%m-%d")
         aid = insert_assignment(data, today)
         return assignment_row_to_dict(get_assignment_by_id(aid))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"生成作业失败：{e}")
+
+
+@router.get("/journal")
+def journal():
+    today = datetime.now().strftime("%Y-%m-%d")
+    return get_or_create_journal_assignment(today)
 
 
 @router.get("/{aid}")

@@ -118,6 +118,7 @@ button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 button.btn.secondary { background: #eef0f3; color: var(--text); }
 button.btn.secondary:hover { background: #e3e6ea; }
 button.btn.danger { background: var(--danger); }
+button.btn.btn-sm { padding: 4px 10px; font-size: 13px; }
 
 .assignment-image {
   display: block;

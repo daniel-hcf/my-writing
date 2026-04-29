@@ -2,12 +2,14 @@ import { api, clearToken } from "./api.js";
 import { showToast } from "./utils.js";
 import { renderDaily } from "./views/daily.js";
 import { renderHistory } from "./views/history.js";
+import { renderJournal } from "./views/journal.js";
 import { renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
 import { checkAuth, showAuthScreen } from "./auth.js";
 
 const views = {
   daily: renderDaily,
+  journal: renderJournal,
   history: renderHistory,
   stats: renderStats,
   settings: renderSettings,

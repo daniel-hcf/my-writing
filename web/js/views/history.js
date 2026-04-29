@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { DIMENSIONS, el, escapeHtml, scoreClass } from "../utils.js";
+import { DIMENSIONS, el, escapeHtml, scoreClass, showToast } from "../utils.js";
 
 export async function renderHistory(root) {
   root.innerHTML = "";
@@ -13,12 +13,14 @@ export async function renderHistory(root) {
   }
   const ul = el("ul", { class: "history-list" });
   for (const s of list) {
+    const typeLabel = s.assignmentType === "image" ? "看图"
+      : s.assignmentType === "journal" ? "随笔" : "场景";
     const li = el("li", {
       onclick: () => showDetail(root, s.id),
     }, [
       el("div", { class: "row" }, [
         el("strong", {}, s.date),
-        el("span", { class: "muted" }, ` · ${s.assignmentType === "image" ? "看图" : "场景"}`),
+        el("span", { class: "muted" }, ` · ${typeLabel}`),
         el("span", { class: "spacer" }),
         el("span", {}, `总分 ${s.totalScore}`),
       ]),
@@ -40,7 +42,21 @@ async function showDetail(root, sid) {
     class: "btn secondary",
     onclick: () => renderHistory(root),
   }, "← 返回列表");
-  root.appendChild(el("div", { class: "card" }, [back]));
+
+  const delBtn = el("button", { class: "btn danger btn-sm" }, "删除记录");
+  delBtn.addEventListener("click", async () => {
+    if (!confirm("确定删除这条记录？删除后可重新提交。")) return;
+    delBtn.disabled = true;
+    try {
+      await api.deleteSubmission(sid);
+      renderHistory(root);
+    } catch (e) {
+      showToast("删除失败：" + e.message, "error");
+      delBtn.disabled = false;
+    }
+  });
+
+  root.appendChild(el("div", { class: "card row" }, [back, el("div", { class: "spacer" }), delBtn]));
 
   if (assignment) {
     const card = el("div", { class: "card" }, [

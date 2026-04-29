@@ -42,6 +42,7 @@ export const api = {
   testProvider: (target) => request("POST", "/api/ai/test", { target }),
 
   getTodayAssignment: () => request("GET", "/api/assignments/today"),
+  getJournalAssignment: () => request("GET", "/api/assignments/journal"),
   newAssignment: () => request("POST", "/api/assignments/new"),
   getAssignment: (id) => request("GET", `/api/assignments/${id}`),
 
@@ -49,6 +50,7 @@ export const api = {
     request("POST", "/api/submissions", { assignmentId, content }),
   listSubmissions: (limit = 50) => request("GET", `/api/submissions?limit=${limit}`),
   getSubmission: (id) => request("GET", `/api/submissions/${id}`),
+  deleteSubmission: (id) => request("DELETE", `/api/submissions/${id}`),
 
   getStats: () => request("GET", "/api/stats"),
 };
