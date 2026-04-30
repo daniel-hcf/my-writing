@@ -44,6 +44,7 @@ html, body {
 .tabs {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .tab {
@@ -199,6 +200,14 @@ button.btn.btn-sm { padding: 4px 10px; font-size: 13px; }
 .history-list li:hover { background: #fafbfc; }
 .history-list li:last-child { border-bottom: 0; }
 
+.history-group-title {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: none;
+}
+
 .toast {
   position: fixed;
   bottom: 24px;
@@ -228,6 +237,31 @@ button.btn.btn-sm { padding: 4px 10px; font-size: 13px; }
 .chart-wrap {
   position: relative;
   height: 360px;
+}
+
+.segmented-row {
+  justify-content: space-between;
+}
+
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented-btn {
+  background: #eef0f3;
+  color: var(--text);
+  border: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.segmented-btn.active {
+  background: var(--primary);
+  color: white;
 }
 
 .writing-layout {

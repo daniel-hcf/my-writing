@@ -1,5 +1,7 @@
 import { api } from "../api.js";
-import { DIMENSIONS, el, escapeHtml, scoreClass, showToast } from "../utils.js";
+import { DIMENSIONS, el, escapeHtml, modeLabel, scoreClass, showToast } from "../utils.js";
+
+const GROUP_ORDER = ["daily", "image_practice", "journal"];
 
 export async function renderHistory(root) {
   root.innerHTML = "";
@@ -7,41 +9,51 @@ export async function renderHistory(root) {
 
   const card = el("div", { class: "card" }, [el("h2", {}, "历史记录")]);
   if (!list.length) {
-    card.appendChild(el("div", { class: "empty" }, "还没有写作记录，去「今日一练」开始第一篇吧。"));
+    card.appendChild(el("div", { class: "empty" }, "还没有写作记录，先去开始第一篇吧。"));
     root.appendChild(card);
     return;
   }
-  const ul = el("ul", { class: "history-list" });
-  for (const s of list) {
-    const typeLabel = s.assignmentType === "image" ? "看图"
-      : s.assignmentType === "journal" ? "随笔" : "场景";
-    const li = el("li", {
-      onclick: () => showDetail(root, s.id),
-    }, [
-      el("div", { class: "row" }, [
-        el("strong", {}, s.date),
-        el("span", { class: "muted" }, ` · ${typeLabel}`),
-        el("span", { class: "spacer" }),
-        el("span", {}, `总分 ${s.totalScore}`),
-      ]),
-      el("div", { class: "muted", style: "font-size:13px;" }, s.assignmentTitle || ""),
-    ]);
-    ul.appendChild(li);
+
+  const groups = new Map(GROUP_ORDER.map((mode) => [mode, []]));
+  for (const item of list) {
+    if (!groups.has(item.assignmentType)) groups.set(item.assignmentType, []);
+    groups.get(item.assignmentType).push(item);
   }
-  card.appendChild(ul);
+
+  for (const mode of GROUP_ORDER) {
+    const items = groups.get(mode) || [];
+    if (!items.length) continue;
+    card.appendChild(el("div", { class: "history-group-title" }, modeLabel(mode)));
+    const ul = el("ul", { class: "history-list" });
+    for (const item of items) {
+      ul.appendChild(el("li", { onclick: () => showDetail(root, item.id) }, [
+        el("div", { class: "row" }, [
+          el("strong", {}, item.date),
+          el("span", { class: "muted" }, ` · ${modeLabel(item.assignmentType)}`),
+          el("span", { class: "spacer" }),
+          el("span", {}, `总分 ${item.totalScore}`),
+        ]),
+        el("div", { class: "muted", style: "font-size:13px;" }, item.assignmentTitle || ""),
+      ]));
+    }
+    card.appendChild(ul);
+  }
+
   root.appendChild(card);
 }
 
 async function showDetail(root, sid) {
   const detail = await api.getSubmission(sid);
   let assignment = null;
-  try { assignment = await api.getAssignment(detail.assignmentId); } catch {}
+  try {
+    assignment = await api.getAssignment(detail.assignmentId);
+  } catch {}
 
   root.innerHTML = "";
   const back = el("button", {
     class: "btn secondary",
     onclick: () => renderHistory(root),
-  }, "← 返回列表");
+  }, "返回列表");
 
   const delBtn = el("button", { class: "btn danger btn-sm" }, "删除记录");
   delBtn.addEventListener("click", async () => {
@@ -51,7 +63,7 @@ async function showDetail(root, sid) {
       await api.deleteSubmission(sid);
       renderHistory(root);
     } catch (e) {
-      showToast("删除失败：" + e.message, "error");
+      showToast(`删除失败：${e.message}`, "error");
       delBtn.disabled = false;
     }
   });
@@ -61,11 +73,10 @@ async function showDetail(root, sid) {
   if (assignment) {
     const card = el("div", { class: "card" }, [
       el("h2", {}, assignment.title || "作业"),
-      el("div", { class: "muted" },
-        `日期：${assignment.date} · 类型：${assignment.type === "image" ? "看图写作" : "场景写作"}`),
+      el("div", { class: "muted" }, `日期：${assignment.date} · 类型：${modeLabel(assignment.type)}`),
     ]);
-    if (assignment.type === "image" && assignment.imageData) {
-      card.appendChild(el("img", { class: "assignment-image", src: assignment.imageData }));
+    if (assignment.type === "image_practice" && assignment.imageData) {
+      card.appendChild(el("img", { class: "assignment-image", src: assignment.imageData, alt: "题图" }));
     }
     if (assignment.scenario) {
       card.appendChild(el("div", { class: "scenario-box", html: escapeHtml(assignment.scenario) }));
@@ -81,12 +92,12 @@ async function showDetail(root, sid) {
 
   const scoreCard = el("div", { class: "card" }, [el("h2", {}, "评分")]);
   const grid = el("div", { class: "scores-grid" });
-  for (const d of DIMENSIONS) {
-    const s = detail.scores[d] ?? null;
-    const cls = s !== null ? scoreClass(s) : "";
+  for (const dim of DIMENSIONS) {
+    const score = detail.scores[dim] ?? null;
+    const cls = score !== null ? scoreClass(score) : "";
     grid.appendChild(el("div", { class: `score-cell${cls ? ` ${cls}-bg` : ""}` }, [
-      el("span", { class: "dim" }, d),
-      el("span", { class: `val${cls ? ` ${cls}` : ""}` }, s !== null ? String(s) : "-"),
+      el("span", { class: "dim" }, dim),
+      el("span", { class: `val${cls ? ` ${cls}` : ""}` }, score !== null ? String(score) : "-"),
     ]));
   }
   scoreCard.appendChild(grid);
@@ -96,14 +107,14 @@ async function showDetail(root, sid) {
   root.appendChild(scoreCard);
 
   const fbCard = el("div", { class: "card" }, [el("h2", {}, "维度点评")]);
-  for (const d of DIMENSIONS) {
-    const f = detail.feedback?.[d] || {};
+  for (const dim of DIMENSIONS) {
+    const feedback = detail.feedback?.[dim] || {};
     fbCard.appendChild(el("details", { class: "dim-detail" }, [
-      el("summary", {}, `${d} · ${detail.scores[d] ?? "-"} 分`),
+      el("summary", {}, `${dim} · ${detail.scores[dim] ?? "-"}`),
       el("div", { class: "feedback-block" }, [
-        el("div", {}, [el("span", { class: "label" }, "优点："), f["优点"] || "—"]),
-        el("div", {}, [el("span", { class: "label" }, "不足："), f["不足"] || "—"]),
-        el("div", {}, [el("span", { class: "label" }, "建议："), f["建议"] || "—"]),
+        el("div", {}, [el("span", { class: "label" }, "优点："), feedback["优点"] || "—"]),
+        el("div", {}, [el("span", { class: "label" }, "不足："), feedback["不足"] || "—"]),
+        el("div", {}, [el("span", { class: "label" }, "建议："), feedback["建议"] || "—"]),
       ]),
     ]));
   }

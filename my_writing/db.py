@@ -37,10 +37,17 @@ CREATE INDEX IF NOT EXISTS idx_submissions_date ON submissions(date);
 CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id);
 """
 
+_ASSIGNMENT_TYPE_MIGRATIONS = {
+    "scenario": "daily",
+    "image": "image_practice",
+}
+
 
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(_SCHEMA)
+        for legacy, target in _ASSIGNMENT_TYPE_MIGRATIONS.items():
+            conn.execute("UPDATE assignments SET type = ? WHERE type = ?", (target, legacy))
         conn.commit()
 
 

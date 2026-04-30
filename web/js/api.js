@@ -14,19 +14,21 @@ async function request(method, path, body) {
     headers: { "Content-Type": "application/json" },
   };
   const token = localStorage.getItem(TOKEN_KEY);
-  if (token) opts.headers["Authorization"] = `Bearer ${token}`;
+  if (token) opts.headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) opts.body = JSON.stringify(body);
 
-  const r = await fetch(path, opts);
+  const response = await fetch(path, opts);
   let data = null;
-  try { data = await r.json(); } catch {}
+  try {
+    data = await response.json();
+  } catch {}
 
-  if (r.status === 401) {
+  if (response.status === 401) {
     clearToken();
     throw new Error("UNAUTHORIZED");
   }
-  if (!r.ok) {
-    const msg = (data && (data.detail || data.message)) || r.statusText;
+  if (!response.ok) {
+    const msg = (data && (data.detail || data.message)) || response.statusText;
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return data;
@@ -42,15 +44,16 @@ export const api = {
   testProvider: (target) => request("POST", "/api/ai/test", { target }),
 
   getTodayAssignment: () => request("GET", "/api/assignments/today"),
-  getJournalAssignment: () => request("GET", "/api/assignments/journal"),
   newAssignment: () => request("POST", "/api/assignments/new"),
+  getTodayImagePractice: () => request("GET", "/api/assignments/image-practice/today"),
+  newImagePractice: () => request("POST", "/api/assignments/image-practice/new"),
+  getJournalAssignment: () => request("GET", "/api/assignments/journal"),
   getAssignment: (id) => request("GET", `/api/assignments/${id}`),
 
-  submit: (assignmentId, content) =>
-    request("POST", "/api/submissions", { assignmentId, content }),
+  submit: (assignmentId, content) => request("POST", "/api/submissions", { assignmentId, content }),
   listSubmissions: (limit = 50) => request("GET", `/api/submissions?limit=${limit}`),
   getSubmission: (id) => request("GET", `/api/submissions/${id}`),
   deleteSubmission: (id) => request("DELETE", `/api/submissions/${id}`),
 
-  getStats: () => request("GET", "/api/stats"),
+  getStats: (mode = "all") => request("GET", `/api/stats?mode=${encodeURIComponent(mode)}`),
 };

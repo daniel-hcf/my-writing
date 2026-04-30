@@ -14,6 +14,32 @@ def _build_client(cfg: ProviderConfig) -> AsyncOpenAI:
     return AsyncOpenAI(**kwargs)
 
 
+def _normalize_image_content_type(content_type: str, content: bytes, url: str | None = None) -> str:
+    ctype = (content_type or "").split(";")[0].strip().lower()
+    if ctype and ctype != "application/octet-stream":
+        return ctype
+
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    if url:
+        lower = url.lower()
+        if lower.endswith(".png"):
+            return "image/png"
+        if lower.endswith((".jpg", ".jpeg")):
+            return "image/jpeg"
+        if lower.endswith(".gif"):
+            return "image/gif"
+        if lower.endswith(".webp"):
+            return "image/webp"
+    return "image/png"
+
+
 class OpenAITextProvider(TextProvider):
     def __init__(self, cfg: ProviderConfig):
         self.client = _build_client(cfg)
@@ -49,11 +75,14 @@ class OpenAIImageProvider(ImageProvider):
         if item.b64_json:
             return f"data:image/png;base64,{item.b64_json}"
         if item.url:
-            # SiliconFlow 等服务只返回 URL，下载后转 base64 持久化存储
             async with httpx.AsyncClient(timeout=60) as client:
-                r = await client.get(item.url)
-                r.raise_for_status()
-            ctype = r.headers.get("content-type", "image/png").split(";")[0]
-            b64 = base64.b64encode(r.content).decode()
+                response = await client.get(item.url)
+                response.raise_for_status()
+            ctype = _normalize_image_content_type(
+                response.headers.get("content-type", "image/png"),
+                response.content,
+                item.url,
+            )
+            b64 = base64.b64encode(response.content).decode()
             return f"data:{ctype};base64,{b64}"
         raise RuntimeError("图片服务未返回图片数据")

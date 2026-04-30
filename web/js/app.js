@@ -1,14 +1,16 @@
 import { api, clearToken } from "./api.js";
 import { showToast } from "./utils.js";
+import { checkAuth, showAuthScreen } from "./auth.js";
 import { renderDaily } from "./views/daily.js";
 import { renderHistory } from "./views/history.js";
+import { renderImagePractice } from "./views/image_practice.js";
 import { renderJournal } from "./views/journal.js";
 import { renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
-import { checkAuth, showAuthScreen } from "./auth.js";
 
 const views = {
   daily: renderDaily,
+  image_practice: renderImagePractice,
   journal: renderJournal,
   history: renderHistory,
   stats: renderStats,
@@ -25,30 +27,38 @@ async function refreshConfig() {
     state.ready = cfg.ready;
     return cfg;
   } catch (e) {
-    showToast("无法读取配置：" + e.message, "error");
+    showToast(`无法读取配置：${e.message}`, "error");
     return null;
   }
 }
 
 function setActiveTab(name) {
-  document.querySelectorAll("#tabs .tab").forEach((b) => {
-    b.classList.toggle("active", b.dataset.tab === name);
+  document.querySelectorAll("#tabs .tab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === name);
   });
 }
 
+function resolveNavigationTarget(name) {
+  if (name === "settings") return "settings";
+  if (!state.ready.text) {
+    showToast("请先在设置页配置文本模型", "error");
+    return "settings";
+  }
+  if (name === "image_practice" && !state.ready.image) {
+    showToast("请先在设置页配置图片模型", "error");
+    return "settings";
+  }
+  return name;
+}
+
 async function navigate(name) {
-  setActiveTab(name);
+  const target = resolveNavigationTarget(name);
+  setActiveTab(target);
   const root = document.getElementById("view");
   root.innerHTML = "<div class='card'><div class='empty'>加载中...</div></div>";
 
-  if (name !== "settings" && !state.ready.text) {
-    showToast("请先在设置页配置文本模型", "error");
-    name = "settings";
-    setActiveTab(name);
-  }
-
   try {
-    await views[name](root, { state, navigate, refreshConfig });
+    await views[target](root, { state, navigate, refreshConfig });
   } catch (e) {
     root.innerHTML = `<div class='card'><div class='empty'>加载失败：${e.message}</div></div>`;
   }
