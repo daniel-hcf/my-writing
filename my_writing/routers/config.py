@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from ..config import DEFAULTS
 from ..db import set_config
 from ..models import FullConfig
+from ..secret_store import encrypt_secret
 from ..services import is_image_configured, is_text_configured, load_full_config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -38,6 +39,8 @@ def put_config_endpoint(payload: FullConfig):
         text["apiKey"] = current.text.apiKey
     if image["apiKey"] in ("", MASK):
         image["apiKey"] = current.image.apiKey
+    text["apiKey"] = encrypt_secret(text["apiKey"])
+    image["apiKey"] = encrypt_secret(image["apiKey"])
     set_config("text", text)
     set_config("image", image)
     return {"ok": True}

@@ -6,9 +6,10 @@ from datetime import datetime
 
 from . import prompts
 from .config import DEFAULTS, DIMENSIONS
-from .db import connect, get_config
+from .db import connect, get_config, set_config
 from .models import FullConfig, ProviderConfig
 from .providers import get_image_provider, get_text_provider
+from .secret_store import decrypt_secret, encrypt_secret, is_encrypted
 
 log = logging.getLogger(__name__)
 
@@ -20,7 +21,18 @@ def load_full_config() -> FullConfig:
     image_raw = get_config("image") or {}
     text = {**DEFAULTS["text"], **text_raw}
     image = {**DEFAULTS["image"], **image_raw}
+    text["apiKey"] = decrypt_secret(text.get("apiKey", ""))
+    image["apiKey"] = decrypt_secret(image.get("apiKey", ""))
     return FullConfig(text=ProviderConfig(**text), image=ProviderConfig(**image))
+
+
+def migrate_config_secrets() -> None:
+    for key in ("text", "image"):
+        raw = get_config(key) or {}
+        api_key = raw.get("apiKey", "")
+        if api_key and not is_encrypted(api_key):
+            raw["apiKey"] = encrypt_secret(api_key)
+            set_config(key, raw)
 
 
 def is_text_configured(cfg: FullConfig) -> bool:

@@ -35,3 +35,11 @@ python -m my_writing
 ```bash
 uvicorn my_writing.app:app --reload --port 3000
 ```
+
+## API Key 加密
+
+AI 服务商的 API Key 会加密后保存到 `data.db`。应用首次启动时会自动生成本机加密主密钥，默认放在当前用户配置目录下，例如 Windows 的 `%APPDATA%\my-writing\secret.key`。
+
+已有明文 `apiKey` 会在启动时自动迁移为 `enc:v1:...` 密文；设置页仍然只显示 `***`。如果只泄露 `data.db`，无法直接读出 API Key。
+
+如果删除或丢失 `secret.key`，已加密的 API Key 将无法解密，需要在设置页重新填写。服务器或容器部署可以用 `MY_WRITING_ENCRYPTION_KEY` 指定 Fernet 主密钥。

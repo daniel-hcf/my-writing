@@ -10,6 +10,7 @@ from .auth import require_auth
 from .config import HOST, PORT, WEB_DIR
 from .db import init_db
 from .routers import ai_test, assignments, auth, config as config_router, stats, submissions
+from .services import migrate_config_secrets
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,6 +21,7 @@ log = logging.getLogger(__name__)
 
 def create_app() -> FastAPI:
     init_db()
+    migrate_config_secrets()
     app = FastAPI(title="my-writing", version="0.1.0")
 
     app.include_router(auth.router)
