@@ -47,6 +47,8 @@ export const api = {
   newAssignment: () => request("POST", "/api/assignments/new"),
   getTodayImagePractice: () => request("GET", "/api/assignments/image-practice/today"),
   newImagePractice: () => request("POST", "/api/assignments/image-practice/new"),
+  getTodayOutlinePractice: () => request("GET", "/api/assignments/outline-practice/today"),
+  newOutlinePractice: () => request("POST", "/api/assignments/outline-practice/new"),
   getJournalAssignment: () => request("GET", "/api/assignments/journal"),
   getAssignment: (id) => request("GET", `/api/assignments/${id}`),
 

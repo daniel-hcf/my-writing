@@ -2,7 +2,7 @@ import json
 import logging
 import re
 import sqlite3
-from datetime import datetime
+from datetime import date as date_cls, datetime, timedelta
 
 from . import prompts
 from .config import DEFAULTS, DIMENSIONS
@@ -15,9 +15,15 @@ log = logging.getLogger(__name__)
 
 MODE_DAILY = "daily"
 MODE_IMAGE_PRACTICE = "image_practice"
+MODE_OUTLINE_PRACTICE = "outline_practice"
 MODE_JOURNAL = "journal"
-PRACTICE_MODES = (MODE_DAILY, MODE_IMAGE_PRACTICE)
+PRACTICE_MODES = (MODE_DAILY, MODE_IMAGE_PRACTICE, MODE_OUTLINE_PRACTICE)
 ALL_MODES = (*PRACTICE_MODES, MODE_JOURNAL)
+OUTLINE_INTERVAL_DAYS = 3
+
+
+def _sql_placeholders(values: tuple[object, ...]) -> str:
+    return ", ".join("?" for _ in values)
 
 
 def load_full_config() -> FullConfig:
@@ -68,9 +74,9 @@ def parse_json_loose(text: str) -> dict:
 def latest_weakest_dimension() -> str | None:
     with connect() as conn:
         row = conn.execute(
-            """SELECT s.scores FROM submissions s
+            f"""SELECT s.scores FROM submissions s
                JOIN assignments a ON a.id = s.assignment_id
-               WHERE a.type IN (?, ?)
+               WHERE a.type IN ({_sql_placeholders(PRACTICE_MODES)})
                ORDER BY s.id DESC LIMIT 1""",
             PRACTICE_MODES,
         ).fetchone()
@@ -100,9 +106,9 @@ def recent_assignment_titles(mode: str | None = None, n: int = 10) -> list[str]:
         submit_filters.append("a.type = ?")
         submit_params.append(mode)
     else:
-        filters.append("type IN (?, ?)")
+        filters.append(f"type IN ({_sql_placeholders(PRACTICE_MODES)})")
         params.extend(PRACTICE_MODES)
-        submit_filters.append("a.type IN (?, ?)")
+        submit_filters.append(f"a.type IN ({_sql_placeholders(PRACTICE_MODES)})")
         submit_params.extend(PRACTICE_MODES)
 
     with connect() as conn:
@@ -136,7 +142,7 @@ def cleanup_orphan_assignments(mode: str | None = None) -> None:
         filters.append("type = ?")
         params.append(mode)
     else:
-        filters.append("type IN (?, ?)")
+        filters.append(f"type IN ({_sql_placeholders(PRACTICE_MODES)})")
         params.extend(PRACTICE_MODES)
     with connect() as conn:
         conn.execute(f"DELETE FROM assignments WHERE {' AND '.join(filters)}", tuple(params))
@@ -153,8 +159,8 @@ async def generate_daily_assignment(
         prompts.daily_assignment_user(focus, recent_titles),
     )
     data = parse_json_loose(raw)
-    title = (data.get("title") or "").strip() or "今日每日一练"
-    scenario = (data.get("scenario") or "").strip() or "请围绕题目自由展开。"
+    title = (data.get("title") or "").strip() or "今日故事种子"
+    scenario = (data.get("scenario") or "").strip() or "主角在一个熟悉的地方发现了不该出现的东西。"
     return {
         "type": MODE_DAILY,
         "title": title,
@@ -190,6 +196,28 @@ async def generate_image_practice_assignment(
     }
 
 
+async def generate_outline_practice_assignment(
+    focus: str | None,
+    cfg: FullConfig,
+    recent_titles: list[str] | None = None,
+) -> dict:
+    text_provider = get_text_provider(cfg.text)
+    raw = await text_provider.chat(
+        prompts.outline_practice_system(),
+        prompts.outline_practice_user(focus, recent_titles),
+    )
+    data = parse_json_loose(raw)
+    title = (data.get("title") or "").strip() or "故事结构与冲突练习"
+    scenario = (data.get("scenario") or "").strip() or "一个人终于得到想要的机会，却发现代价会伤害最信任他的人。"
+    return {
+        "type": MODE_OUTLINE_PRACTICE,
+        "title": title,
+        "scenario": scenario,
+        "image_data": None,
+        "focus_dimension": focus,
+    }
+
+
 def insert_assignment(data: dict, date: str) -> int:
     with connect() as conn:
         cur = conn.execute(
@@ -219,7 +247,7 @@ def get_assignment_by_date(date: str, mode_filter: str | None = None) -> sqlite3
                 (date, mode_filter),
             ).fetchone()
         return conn.execute(
-            "SELECT * FROM assignments WHERE date = ? AND type IN (?, ?) ORDER BY id DESC LIMIT 1",
+            f"SELECT * FROM assignments WHERE date = ? AND type IN ({_sql_placeholders(PRACTICE_MODES)}) ORDER BY id DESC LIMIT 1",
             (date, *PRACTICE_MODES),
         ).fetchone()
 
@@ -272,6 +300,49 @@ def delete_unsubmitted_assignments(date: str, mode: str) -> None:
         )
 
 
+def latest_outline_completion_date() -> str | None:
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT s.date FROM submissions s
+               JOIN assignments a ON a.id = s.assignment_id
+               WHERE a.type = ?
+               ORDER BY s.date DESC, s.id DESC LIMIT 1""",
+            (MODE_OUTLINE_PRACTICE,),
+        ).fetchone()
+    return row["date"] if row else None
+
+
+def outline_practice_status(today: date_cls | None = None) -> dict:
+    today = today or date_cls.today()
+    last = latest_outline_completion_date()
+    if not last:
+        return {
+            "due": True,
+            "lastCompletedDate": None,
+            "nextAvailableDate": today.isoformat(),
+            "daysUntilDue": 0,
+        }
+
+    try:
+        last_date = date_cls.fromisoformat(last)
+    except ValueError:
+        return {
+            "due": True,
+            "lastCompletedDate": last,
+            "nextAvailableDate": today.isoformat(),
+            "daysUntilDue": 0,
+        }
+
+    next_date = last_date + timedelta(days=OUTLINE_INTERVAL_DAYS)
+    days_until_due = max(0, (next_date - today).days)
+    return {
+        "due": today >= next_date,
+        "lastCompletedDate": last,
+        "nextAvailableDate": next_date.isoformat(),
+        "daysUntilDue": days_until_due,
+    }
+
+
 def get_or_create_journal_assignment(date: str) -> dict:
     row = get_assignment_by_date(date, mode_filter=MODE_JOURNAL)
     if not row:
@@ -312,7 +383,7 @@ async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
 async def replace_today_daily_assignment(cfg: FullConfig) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
     if assignment_mode_has_submission(today, MODE_DAILY):
-        raise ValueError("今日每日一练已完成，不能再换题")
+        raise ValueError("今日主练已完成，不能再换题")
     delete_unsubmitted_assignments(today, MODE_DAILY)
     focus = latest_weakest_dimension()
     recent = recent_assignment_titles(MODE_DAILY)
@@ -341,6 +412,40 @@ async def replace_today_image_practice(cfg: FullConfig) -> dict:
     data = await generate_image_practice_assignment(focus, cfg, recent)
     aid = insert_assignment(data, today)
     return assignment_row_to_dict(get_assignment_by_id(aid))
+
+
+async def get_or_create_today_outline_practice(cfg: FullConfig) -> dict:
+    today = datetime.now().strftime("%Y-%m-%d")
+    status = outline_practice_status()
+    row = get_assignment_by_date(today, mode_filter=MODE_OUTLINE_PRACTICE)
+    if not row and status["due"]:
+        focus = latest_weakest_dimension()
+        recent = recent_assignment_titles(MODE_OUTLINE_PRACTICE)
+        data = await generate_outline_practice_assignment(focus, cfg, recent)
+        aid = insert_assignment(data, today)
+        row = get_assignment_by_id(aid)
+
+    if not row:
+        return {"type": MODE_OUTLINE_PRACTICE, **status}
+
+    result = assignment_row_to_dict(row)
+    sub = get_submission_by_assignment(row["id"])
+    if sub:
+        result["submission"] = submission_row_to_dict(sub)
+    result.update(status)
+    return result
+
+
+async def replace_today_outline_practice(cfg: FullConfig) -> dict:
+    today = datetime.now().strftime("%Y-%m-%d")
+    delete_unsubmitted_assignments(today, MODE_OUTLINE_PRACTICE)
+    focus = latest_weakest_dimension()
+    recent = recent_assignment_titles(MODE_OUTLINE_PRACTICE)
+    data = await generate_outline_practice_assignment(focus, cfg, recent)
+    aid = insert_assignment(data, today)
+    result = assignment_row_to_dict(get_assignment_by_id(aid))
+    result.update(outline_practice_status())
+    return result
 
 
 def assignment_row_to_dict(row: sqlite3.Row | None) -> dict:
@@ -451,8 +556,6 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
 
 
 async def pre_generate_tomorrow(cfg: FullConfig) -> None:
-    from datetime import timedelta
-
     target = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
     if get_assignment_by_date(target, mode_filter=MODE_DAILY):
         return
@@ -466,7 +569,7 @@ async def pre_generate_tomorrow(cfg: FullConfig) -> None:
 
 
 def collect_stats(mode: str = "all") -> dict:
-    where_sql = "a.type IN (?, ?)"
+    where_sql = f"a.type IN ({_sql_placeholders(PRACTICE_MODES)})"
     params: tuple[object, ...] = PRACTICE_MODES
     if mode in PRACTICE_MODES:
         where_sql = "a.type = ?"

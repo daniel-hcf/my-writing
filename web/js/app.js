@@ -5,11 +5,13 @@ import { renderDaily } from "./views/daily.js";
 import { renderHistory } from "./views/history.js";
 import { renderImagePractice } from "./views/image_practice.js";
 import { renderJournal } from "./views/journal.js";
+import { renderOutlinePractice } from "./views/outline_practice.js";
 import { renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
 
 const views = {
   daily: renderDaily,
+  outline_practice: renderOutlinePractice,
   image_practice: renderImagePractice,
   journal: renderJournal,
   history: renderHistory,

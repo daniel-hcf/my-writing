@@ -9,8 +9,9 @@ export const DIMENSIONS = [
 ];
 
 export const MODE_LABELS = {
-  daily: "每日一练",
+  daily: "每日主练",
   image_practice: "看图写作",
+  outline_practice: "故事小纲",
   journal: "每日随笔",
 };
 

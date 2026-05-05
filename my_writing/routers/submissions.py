@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from ..config import MIN_CHAR_COUNT
+from ..config import DAILY_MIN_CHAR_COUNT, IMAGE_PRACTICE_MIN_CHAR_COUNT, OUTLINE_PRACTICE_MIN_CHAR_COUNT
 from ..db import connect
 from ..models import SubmissionCreate
 from ..services import (
@@ -13,6 +13,16 @@ from ..services import (
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 
+MIN_CHAR_COUNTS = {
+    "daily": DAILY_MIN_CHAR_COUNT,
+    "image_practice": IMAGE_PRACTICE_MIN_CHAR_COUNT,
+    "outline_practice": OUTLINE_PRACTICE_MIN_CHAR_COUNT,
+}
+
+
+def min_char_count_for_assignment_type(assignment_type: str) -> int:
+    return MIN_CHAR_COUNTS.get(assignment_type, 1)
+
 
 @router.post("")
 async def create(payload: SubmissionCreate, background: BackgroundTasks):
@@ -21,8 +31,11 @@ async def create(payload: SubmissionCreate, background: BackgroundTasks):
         raise HTTPException(status_code=400, detail="文本模型未配置")
     with connect() as conn:
         arow = conn.execute("SELECT type FROM assignments WHERE id = ?", (payload.assignmentId,)).fetchone()
-    if (not arow or arow["type"] != "journal") and len(payload.content) < MIN_CHAR_COUNT:
-        raise HTTPException(status_code=400, detail=f"作品至少 {MIN_CHAR_COUNT} 字")
+    if not arow:
+        raise HTTPException(status_code=404, detail="作业不存在")
+    min_count = min_char_count_for_assignment_type(arow["type"])
+    if arow["type"] != "journal" and len(payload.content) < min_count:
+        raise HTTPException(status_code=400, detail=f"作品至少 {min_count} 字")
     try:
         result = await score_submission(payload.assignmentId, payload.content, cfg)
     except ValueError as e:

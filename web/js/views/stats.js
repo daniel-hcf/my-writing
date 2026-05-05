@@ -4,7 +4,8 @@ import { el, modeLabel } from "../utils.js";
 
 const MODES = [
   { value: "all", label: "全部练习" },
-  { value: "daily", label: "每日一练" },
+  { value: "daily", label: "每日主练" },
+  { value: "outline_practice", label: "故事小纲" },
   { value: "image_practice", label: "看图写作" },
 ];
 

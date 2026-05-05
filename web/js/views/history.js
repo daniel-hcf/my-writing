@@ -1,7 +1,7 @@
 import { api } from "../api.js";
 import { DIMENSIONS, el, escapeHtml, modeLabel, scoreClass, showToast } from "../utils.js";
 
-const GROUP_ORDER = ["daily", "image_practice", "journal"];
+const GROUP_ORDER = ["daily", "outline_practice", "image_practice", "journal"];
 
 export async function renderHistory(root) {
   root.innerHTML = "";
@@ -79,7 +79,15 @@ async function showDetail(root, sid) {
       card.appendChild(el("img", { class: "assignment-image", src: assignment.imageData, alt: "题图" }));
     }
     if (assignment.scenario) {
-      card.appendChild(el("div", { class: "scenario-box", html: escapeHtml(assignment.scenario) }));
+      const label = assignment.type === "daily"
+        ? "故事种子："
+        : assignment.type === "outline_practice"
+          ? "冲突引子："
+          : "";
+      card.appendChild(el("div", { class: "scenario-box" }, [
+        label ? el("strong", {}, label) : null,
+        el("span", {}, assignment.scenario),
+      ]));
     }
     root.appendChild(card);
   }

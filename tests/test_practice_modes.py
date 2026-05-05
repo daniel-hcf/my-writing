@@ -7,10 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 from cryptography.fernet import Fernet
 
-from my_writing import db, services
+from my_writing import db, prompts, services
 from my_writing.db import connect, init_db
 from my_writing.models import FullConfig, ProviderConfig
 from my_writing.providers import openai_provider
+from my_writing.routers import submissions as submissions_router
 
 
 def make_cfg() -> FullConfig:
@@ -67,6 +68,26 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
             types = [r["type"] for r in conn.execute("SELECT type FROM assignments ORDER BY id ASC").fetchall()]
 
         self.assertEqual(types, ["daily", "image_practice", "journal"])
+
+    def test_daily_prompt_targets_story_seed_expansion(self):
+        user_prompt = prompts.daily_assignment_user("场景描写")
+
+        self.assertIn("故事种子", user_prompt)
+        self.assertIn("300~800", user_prompt)
+        self.assertIn("20~60", user_prompt)
+        self.assertIn("环境、动作、心理", user_prompt)
+        self.assertIn('"scenario"', user_prompt)
+
+    def test_outline_prompt_targets_structure_and_conflict(self):
+        user_prompt = prompts.outline_practice_user("叙事结构")
+
+        self.assertIn("20~80", user_prompt)
+        self.assertIn("100~200 字故事小纲", user_prompt)
+        self.assertIn("不要写成完整故事小纲", user_prompt)
+        self.assertIn("不要替学员设计冲突升级", user_prompt)
+        self.assertIn("故事结构", user_prompt)
+        self.assertIn("冲突", user_prompt)
+        self.assertIn('"scenario"', user_prompt)
 
     async def test_get_or_create_today_assignment_returns_daily_and_reuses_it(self):
         generator = getattr(services, "generate_daily_assignment", None)
@@ -193,6 +214,91 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
                 (datetime.now().strftime("%Y-%m-%d"),),
             ).fetchall()
         self.assertEqual([r["title"] for r in active], ["new image"])
+
+    async def test_outline_practice_generates_when_due_and_reuses_today_assignment(self):
+        creator = getattr(services, "get_or_create_today_outline_practice", None)
+        self.assertIsNotNone(creator)
+        if creator is None:
+            return
+
+        with patch.object(
+            services,
+            "generate_outline_practice_assignment",
+            AsyncMock(
+                return_value={
+                    "type": "outline_practice",
+                    "title": "outline title",
+                    "scenario": "主角终于得到机会，却发现必须背叛最信任自己的人。",
+                    "image_data": None,
+                    "focus_dimension": "叙事结构",
+                }
+            ),
+        ) as gen:
+            first = await creator(self.cfg)
+            second = await creator(self.cfg)
+
+        self.assertEqual(first["type"], "outline_practice")
+        self.assertEqual(first["id"], second["id"])
+        self.assertTrue(first["due"])
+        self.assertEqual(gen.await_count, 1)
+
+    async def test_outline_practice_waits_until_three_days_after_completion(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "outline_practice", "done outline", "outline body", None, None, f"{today}T00:00:00"),
+            )
+            outline_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO submissions
+                  (assignment_id, date, content, char_count, scores, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (outline_id, today, "x" * 120, 120, "{}", "{}", f"{today}T00:01:00"),
+            )
+
+        with patch.object(services, "generate_outline_practice_assignment", AsyncMock()) as gen:
+            result = await services.get_or_create_today_outline_practice(self.cfg)
+
+        self.assertEqual(result["id"], outline_id)
+        self.assertFalse(result["due"])
+        self.assertEqual(result["daysUntilDue"], 3)
+        self.assertEqual(gen.await_count, 0)
+
+    def test_outline_practice_status_is_due_after_three_days(self):
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("2026-04-29", "outline_practice", "old outline", "outline body", None, None, "2026-04-29T00:00:00"),
+            )
+            outline_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO submissions
+                  (assignment_id, date, content, char_count, scores, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (outline_id, "2026-04-29", "x" * 120, 120, "{}", "{}", "2026-04-29T00:01:00"),
+            )
+
+        status = services.outline_practice_status(today=datetime.strptime("2026-05-02", "%Y-%m-%d").date())
+
+        self.assertTrue(status["due"])
+        self.assertEqual(status["nextAvailableDate"], "2026-05-02")
+
+    def test_submission_minimums_by_assignment_type(self):
+        self.assertEqual(submissions_router.min_char_count_for_assignment_type("daily"), 300)
+        self.assertEqual(submissions_router.min_char_count_for_assignment_type("outline_practice"), 100)
+        self.assertEqual(submissions_router.min_char_count_for_assignment_type("image_practice"), 500)
+        self.assertEqual(submissions_router.min_char_count_for_assignment_type("journal"), 1)
 
     def test_collect_stats_supports_mode_filtering(self):
         self.assertIn("mode", signature(services.collect_stats).parameters)
