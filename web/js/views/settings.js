@@ -66,6 +66,8 @@ export async function renderSettings(root, ctx) {
     refresh: ctx.refreshConfig,
   }));
 
+  root.appendChild(await buildEditorialSection());
+
   root.appendChild(el("div", { class: "card" }, [
     el("div", { class: "muted" }, [
       "Ollama 无需 API Key。",
@@ -74,6 +76,195 @@ export async function renderSettings(root, ctx) {
       el("br"),
       "OpenRouter 一个账号接入所有家，Base URL 填 https://openrouter.ai/api/v1。",
     ]),
+  ]));
+}
+
+async function buildEditorialSection() {
+  const [packs, sources, smtp, schedule] = await Promise.all([
+    api.listEditorialPacks(),
+    api.listRSSSources(),
+    api.getSMTPConfig(),
+    api.getEditorialSchedule(),
+  ]);
+
+  const reloadEditorialSettings = () => renderSettings(document.getElementById("view"), { refreshConfig: async () => {} });
+  const sourceList = el("div", { class: "source-list" });
+  renderSourceList(sourceList, sources, reloadEditorialSettings);
+
+  const packButtons = packs.map((pack) => {
+    const btn = el("button", { class: "btn secondary btn-sm" }, `导入${pack.name}`);
+    btn.title = pack.sources.map((source) => `${source.name} · ${source.url}`).join("\n");
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      btn.textContent = "导入中...";
+      try {
+        const result = await api.importEditorialPack(pack.id);
+        showToast(`已导入 ${result.imported} 个源，跳过 ${result.skipped} 个重复源`);
+        reloadEditorialSettings();
+      } catch (e) {
+        showToast(`导入失败：${e.message}`, "error");
+      }
+    });
+    return btn;
+  });
+
+  const smtpHost = el("input", { type: "text", value: smtp.host || "", placeholder: "smtp.example.com" });
+  const smtpPort = el("input", { type: "number", value: smtp.port || 465 });
+  const smtpUser = el("input", { type: "text", value: smtp.username || "", placeholder: "邮箱账号" });
+  const smtpPassword = el("input", { type: "password", value: smtp.password || "", placeholder: "授权码/应用专用密码" });
+  const smtpFrom = el("input", { type: "text", value: smtp.fromEmail || "", placeholder: "发件人邮箱" });
+  const smtpTo = el("input", { type: "text", value: smtp.toEmail || "", placeholder: "收件人邮箱" });
+  const useTls = el("input", { type: "checkbox" });
+  useTls.checked = smtp.useTls !== false;
+  const sendTime = el("input", { type: "time", value: schedule.sendTime || "08:00" });
+  const autoSend = el("input", { type: "checkbox" });
+  autoSend.checked = schedule.autoSend !== false;
+  const newSourceName = el("input", { type: "text", placeholder: "源名称" });
+  const newSourceUrl = el("input", { type: "text", placeholder: "RSS URL" });
+  const newSourceChannel = el("select", {}, [
+    el("option", { value: "social" }, "当前社会热点"),
+    el("option", { value: "story" }, "故事素材雷达"),
+  ]);
+  const addSourceBtn = el("button", { class: "btn secondary btn-sm" }, "新增RSS源");
+  addSourceBtn.addEventListener("click", async () => {
+    try {
+      await api.createRSSSource({
+        name: newSourceName.value.trim(),
+        url: newSourceUrl.value.trim(),
+        channel: newSourceChannel.value,
+        enabled: true,
+      });
+      showToast("RSS 源已新增");
+      reloadEditorialSettings();
+    } catch (e) {
+      showToast(`新增失败：${e.message}`, "error");
+    }
+  });
+
+  const saveBtn = el("button", { class: "btn" }, "保存编辑部设置");
+  saveBtn.addEventListener("click", async () => {
+    try {
+      await api.putSMTPConfig({
+        host: smtpHost.value.trim(),
+        port: Number(smtpPort.value || 465),
+        username: smtpUser.value.trim(),
+        password: smtpPassword.value,
+        fromEmail: smtpFrom.value.trim(),
+        toEmail: smtpTo.value.trim(),
+        useTls: useTls.checked,
+      });
+      await api.putEditorialSchedule({ sendTime: sendTime.value || "08:00", autoSend: autoSend.checked });
+      showToast("编辑部设置已保存");
+    } catch (e) {
+      showToast(`保存失败：${e.message}`, "error");
+    }
+  });
+
+  const testBtn = el("button", { class: "btn secondary" }, "测试SMTP");
+  testBtn.addEventListener("click", async () => {
+    try {
+      await api.putSMTPConfig({
+        host: smtpHost.value.trim(),
+        port: Number(smtpPort.value || 465),
+        username: smtpUser.value.trim(),
+        password: smtpPassword.value,
+        fromEmail: smtpFrom.value.trim(),
+        toEmail: smtpTo.value.trim(),
+        useTls: useTls.checked,
+      });
+      await api.testSMTPConfig();
+      showToast("SMTP 连接成功");
+    } catch (e) {
+      showToast(`SMTP 测试失败：${e.message}`, "error");
+    }
+  });
+
+  return el("div", { class: "card" }, [
+    el("h2", {}, "AI 编辑部"),
+    el("div", { class: "muted" }, "一键导入推荐 RSS 源，配置个人邮箱 SMTP，每天自动发送双频道素材简报。"),
+    el("div", { class: "field" }, [el("label", {}, "推荐源包（鼠标悬停可预览源列表）"), el("div", { class: "row" }, packButtons)]),
+    el("div", { class: "field-row" }, [
+      el("div", { class: "field" }, [el("label", {}, "手动新增源"), newSourceName]),
+      el("div", { class: "field" }, [el("label", {}, "RSS URL"), newSourceUrl]),
+    ]),
+    el("div", { class: "row" }, [newSourceChannel, addSourceBtn]),
+    sourceList,
+    el("div", { class: "field-row" }, [
+      el("div", { class: "field" }, [el("label", {}, "发送时间"), sendTime]),
+      el("label", { class: "check-row" }, [autoSend, " 自动发送，错过后下次启动补发"]),
+    ]),
+    el("div", { class: "field-row" }, [
+      el("div", { class: "field" }, [el("label", {}, "SMTP 主机"), smtpHost]),
+      el("div", { class: "field" }, [el("label", {}, "端口"), smtpPort]),
+    ]),
+    el("div", { class: "field-row" }, [
+      el("div", { class: "field" }, [el("label", {}, "账号"), smtpUser]),
+      el("div", { class: "field" }, [el("label", {}, "授权码/密码"), smtpPassword]),
+    ]),
+    el("div", { class: "field-row" }, [
+      el("div", { class: "field" }, [el("label", {}, "发件人"), smtpFrom]),
+      el("div", { class: "field" }, [el("label", {}, "收件人"), smtpTo]),
+    ]),
+    el("label", { class: "check-row" }, [useTls, " 使用 SSL/TLS（多数个人邮箱建议开启）"]),
+    el("div", { class: "row" }, [saveBtn, testBtn]),
+  ]);
+}
+
+function renderSourceList(root, sources, reload) {
+  root.innerHTML = "";
+  if (!sources.length) {
+    root.appendChild(el("div", { class: "empty" }, "还没有 RSS 源。可以先导入推荐源包。"));
+    return;
+  }
+  const rows = sources.slice(0, 20).map((source) => {
+    const toggleBtn = el("button", { class: "btn secondary btn-sm" }, source.enabled ? "停用" : "启用");
+    toggleBtn.addEventListener("click", async () => {
+      try {
+        await api.updateRSSSource(source.id, { enabled: !source.enabled });
+        reload();
+      } catch (e) {
+        showToast(`更新失败：${e.message}`, "error");
+      }
+    });
+    const deleteBtn = el("button", { class: "btn secondary btn-sm" }, "删除");
+    deleteBtn.addEventListener("click", async () => {
+      if (!confirm(`删除 RSS 源「${source.name}」？已入库素材不会被删除。`)) return;
+      try {
+        await api.deleteRSSSource(source.id);
+        reload();
+      } catch (e) {
+        showToast(`删除失败：${e.message}`, "error");
+      }
+    });
+    const editBtn = el("button", { class: "btn secondary btn-sm" }, "编辑");
+    editBtn.addEventListener("click", async () => {
+      const name = prompt("RSS 源名称", source.name);
+      if (name == null) return;
+      const url = prompt("RSS URL", source.url);
+      if (url == null) return;
+      try {
+        await api.updateRSSSource(source.id, { name: name.trim(), url: url.trim(), channel: source.channel, enabled: source.enabled });
+        reload();
+      } catch (e) {
+        showToast(`编辑失败：${e.message}`, "error");
+      }
+    });
+    return el("div", { class: "source-row" }, [
+      el("div", {}, [
+        el("strong", {}, source.name),
+        el("div", { class: "muted" }, `${source.channelLabel} · ${source.url}`),
+      ]),
+      el("div", { class: "row" }, [
+        el("span", { class: source.enabled ? "focus-tag" : "focus-tag muted" }, source.enabled ? "启用" : "停用"),
+        editBtn,
+        toggleBtn,
+        deleteBtn,
+      ]),
+    ]);
+  });
+  root.appendChild(el("div", { class: "field" }, [
+    el("label", {}, `RSS 源（显示前 ${Math.min(20, sources.length)} 个，共 ${sources.length} 个）`),
+    ...rows,
   ]));
 }
 

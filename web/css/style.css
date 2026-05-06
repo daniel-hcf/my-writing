@@ -388,3 +388,55 @@ details.dim-detail summary {
   border-color: var(--danger);
   background: transparent;
 }
+
+.material-tabs {
+  margin: 16px 0 10px;
+}
+
+.material-item,
+.source-row,
+.brief-row,
+.ai-block {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 10px 0;
+  background: #fff;
+}
+
+.material-item p {
+  margin: 8px 0;
+  line-height: 1.7;
+}
+
+.source-row,
+.brief-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.check-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ai-block pre {
+  white-space: pre-wrap;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-family: inherit;
+  line-height: 1.7;
+}
+
+.fiction-note {
+  background: #fff7ed;
+  border-left: 3px solid #f97316;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #7c2d12;
+}

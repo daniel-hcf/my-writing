@@ -9,8 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from .auth import require_auth
 from .config import HOST, PORT, WEB_DIR
 from .db import init_db
-from .routers import ai_test, assignments, auth, config as config_router, stats, submissions
-from .services import migrate_config_secrets
+from .editorial import start_editorial_scheduler
+from .routers import ai_test, assignments, auth, config as config_router, editorial, stats, submissions
+from .services import load_full_config, migrate_config_secrets
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,6 +33,7 @@ def create_app() -> FastAPI:
     app.include_router(assignments.router, **protected)
     app.include_router(submissions.router, **protected)
     app.include_router(stats.router, **protected)
+    app.include_router(editorial.router, **protected)
 
     if WEB_DIR.exists():
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
@@ -48,6 +50,7 @@ def create_app() -> FastAPI:
                 log.info("自动打开浏览器失败，请手动访问 http://%s:%s（%s）", HOST, PORT, e)
 
         threading.Thread(target=_open, daemon=True).start()
+        start_editorial_scheduler(load_full_config, f"http://{HOST}:{PORT}")
 
     return app
 

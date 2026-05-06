@@ -58,4 +58,25 @@ export const api = {
   deleteSubmission: (id) => request("DELETE", `/api/submissions/${id}`),
 
   getStats: (mode = "all") => request("GET", `/api/stats?mode=${encodeURIComponent(mode)}`),
+
+  listEditorialPacks: () => request("GET", "/api/editorial/packs"),
+  importEditorialPack: (packId) => request("POST", `/api/editorial/packs/${encodeURIComponent(packId)}/import`),
+  listRSSSources: () => request("GET", "/api/editorial/sources"),
+  createRSSSource: (payload) => request("POST", "/api/editorial/sources", payload),
+  updateRSSSource: (id, payload) => request("PUT", `/api/editorial/sources/${id}`, payload),
+  deleteRSSSource: (id) => request("DELETE", `/api/editorial/sources/${id}`),
+  fetchEditorialSources: () => request("POST", "/api/editorial/fetch"),
+  listMaterials: (channel = "", limit = 100) =>
+    request("GET", `/api/editorial/materials?limit=${limit}${channel ? `&channel=${encodeURIComponent(channel)}` : ""}`),
+  getMaterial: (id) => request("GET", `/api/editorial/materials/${id}`),
+  deepDiveMaterial: (id) => request("POST", `/api/editorial/materials/${id}/deep-dive`),
+  storyIdeasMaterial: (id) => request("POST", `/api/editorial/materials/${id}/story-ideas`),
+  listBriefs: (limit = 30) => request("GET", `/api/editorial/briefs?limit=${limit}`),
+  generateTodayBrief: () => request("POST", "/api/editorial/briefs/today/generate"),
+  sendBrief: (id) => request("POST", `/api/editorial/briefs/${id}/send`),
+  getSMTPConfig: () => request("GET", "/api/editorial/smtp"),
+  putSMTPConfig: (payload) => request("PUT", "/api/editorial/smtp", payload),
+  testSMTPConfig: () => request("POST", "/api/editorial/smtp/test"),
+  getEditorialSchedule: () => request("GET", "/api/editorial/schedule"),
+  putEditorialSchedule: (payload) => request("PUT", "/api/editorial/schedule", payload),
 };

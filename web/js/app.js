@@ -6,6 +6,7 @@ import { renderHistory } from "./views/history.js";
 import { renderImagePractice } from "./views/image_practice.js";
 import { renderJournal } from "./views/journal.js";
 import { renderOutlinePractice } from "./views/outline_practice.js";
+import { renderEditorial } from "./views/editorial.js";
 import { renderSettings } from "./views/settings.js";
 import { renderStats } from "./views/stats.js";
 
@@ -14,6 +15,7 @@ const views = {
   outline_practice: renderOutlinePractice,
   image_practice: renderImagePractice,
   journal: renderJournal,
+  editorial: renderEditorial,
   history: renderHistory,
   stats: renderStats,
   settings: renderSettings,
@@ -85,7 +87,8 @@ window.addEventListener("unhandledrejection", (e) => {
 
 async function startApp() {
   await refreshConfig();
-  await navigate(state.ready.text ? "daily" : "settings");
+  const materialMatch = location.hash.match(/^#\/materials\/(\d+)/);
+  await navigate(materialMatch && state.ready.text ? "editorial" : state.ready.text ? "daily" : "settings");
 }
 
 (async function boot() {
