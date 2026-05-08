@@ -69,6 +69,63 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(types, ["daily", "image_practice", "journal"])
 
+    def test_init_db_creates_assignment_drafts_table(self):
+        with connect() as conn:
+            columns = {
+                r["name"]
+                for r in conn.execute("PRAGMA table_info(assignment_drafts)").fetchall()
+            }
+
+        self.assertIn("assignment_id", columns)
+        self.assertIn("content", columns)
+        self.assertIn("char_count", columns)
+        self.assertIn("updated_at", columns)
+
+    def test_assignment_draft_save_overwrites_existing_content(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "draft title", "draft body", None, None, f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        first = services.save_assignment_draft(aid, "first draft")
+        second = services.save_assignment_draft(aid, "second draft")
+
+        self.assertEqual(first["assignmentId"], aid)
+        self.assertEqual(second["draftContent"], "second draft")
+        self.assertEqual(second["draftCharCount"], len("second draft"))
+        with connect() as conn:
+            rows = conn.execute("SELECT content FROM assignment_drafts WHERE assignment_id = ?", (aid,)).fetchall()
+        self.assertEqual([r["content"] for r in rows], ["second draft"])
+
+    def test_assignment_draft_rejects_submitted_assignment(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "submitted", "body", None, None, f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO submissions
+                  (assignment_id, date, content, char_count, scores, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (aid, today, "x" * 300, 300, "{}", "{}", f"{today}T00:01:00"),
+            )
+
+        with self.assertRaisesRegex(ValueError, "assignment_already_submitted"):
+            services.save_assignment_draft(aid, "late draft")
+
     def test_daily_prompt_targets_story_seed_expansion(self):
         user_prompt = prompts.daily_assignment_user("场景描写")
 
@@ -115,6 +172,11 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first["id"], second["id"])
         self.assertEqual(gen.await_count, 1)
 
+        services.save_assignment_draft(first["id"], "saved daily draft")
+        restored = await services.get_or_create_today_assignment(self.cfg)
+        self.assertEqual(restored["draftContent"], "saved daily draft")
+        self.assertEqual(restored["draftCharCount"], len("saved daily draft"))
+
     async def test_image_practice_reuses_current_unsubmitted_and_allows_new_after_submit(self):
         creator = getattr(services, "get_or_create_today_image_practice", None)
         self.assertIsNotNone(creator)
@@ -144,6 +206,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
             ),
         ) as gen:
             first = await creator(self.cfg)
+            services.save_assignment_draft(first["id"], "saved image draft")
             reused = await creator(self.cfg)
 
             with connect() as conn:
@@ -167,6 +230,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
             next_one = await creator(self.cfg)
 
         self.assertEqual(first["id"], reused["id"])
+        self.assertEqual(reused["draftContent"], "saved image draft")
         self.assertNotEqual(first["id"], next_one["id"])
         self.assertEqual(gen.await_count, 2)
 
@@ -201,6 +265,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             first = await creator(self.cfg)
+            services.save_assignment_draft(first["id"], "discarded draft")
             replaced = await replacer(self.cfg)
 
         self.assertNotEqual(first["id"], replaced["id"])
@@ -213,7 +278,9 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
                 """,
                 (datetime.now().strftime("%Y-%m-%d"),),
             ).fetchall()
+            draft_rows = conn.execute("SELECT * FROM assignment_drafts").fetchall()
         self.assertEqual([r["title"] for r in active], ["new image"])
+        self.assertEqual(draft_rows, [])
 
     async def test_outline_practice_generates_when_due_and_reuses_today_assignment(self):
         creator = getattr(services, "get_or_create_today_outline_practice", None)
@@ -235,12 +302,36 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
             ),
         ) as gen:
             first = await creator(self.cfg)
+            services.save_assignment_draft(first["id"], "saved outline draft")
             second = await creator(self.cfg)
 
         self.assertEqual(first["type"], "outline_practice")
         self.assertEqual(first["id"], second["id"])
+        self.assertEqual(second["draftContent"], "saved outline draft")
         self.assertTrue(first["due"])
         self.assertEqual(gen.await_count, 1)
+
+    async def test_score_submission_deletes_assignment_draft(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "outline_practice", "score draft", "outline body", None, None, f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        services.save_assignment_draft(aid, "x" * 120)
+
+        fake_provider = AsyncMock()
+        fake_provider.chat = AsyncMock(return_value='{"scores": {}, "feedback": {}, "overall": "ok"}')
+        with patch.object(services, "get_text_provider", return_value=fake_provider):
+            await services.score_submission(aid, "x" * 120, self.cfg)
+
+        with connect() as conn:
+            draft = conn.execute("SELECT * FROM assignment_drafts WHERE assignment_id = ?", (aid,)).fetchone()
+        self.assertIsNone(draft)
 
     async def test_outline_practice_waits_until_three_days_after_completion(self):
         today = datetime.now().strftime("%Y-%m-%d")

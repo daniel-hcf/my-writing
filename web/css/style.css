@@ -156,6 +156,12 @@ button.btn.btn-sm { padding: 4px 10px; font-size: 13px; }
 }
 .char-count.ok { color: var(--success); }
 
+.draft-status {
+  font-size: 12px;
+  min-width: 58px;
+}
+.draft-status.draft-error { color: var(--danger); }
+
 .scores-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

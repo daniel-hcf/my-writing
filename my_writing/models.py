@@ -20,6 +20,10 @@ class SubmissionCreate(BaseModel):
     content: str = Field(min_length=1)
 
 
+class AssignmentDraftUpdate(BaseModel):
+    content: str = ""
+
+
 class TestRequest(BaseModel):
     target: Literal["text", "image"]
 

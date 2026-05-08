@@ -265,6 +265,65 @@ def get_submission_by_assignment(assignment_id: int) -> sqlite3.Row | None:
         ).fetchone()
 
 
+def draft_row_to_dict(row: sqlite3.Row | None) -> dict:
+    if row is None:
+        return {"draftContent": "", "draftCharCount": 0, "draftUpdatedAt": None}
+    return {
+        "draftContent": row["content"],
+        "draftCharCount": row["char_count"],
+        "draftUpdatedAt": row["updated_at"],
+    }
+
+
+def get_assignment_draft(assignment_id: int) -> sqlite3.Row | None:
+    with connect() as conn:
+        return conn.execute(
+            "SELECT * FROM assignment_drafts WHERE assignment_id = ?",
+            (assignment_id,),
+        ).fetchone()
+
+
+def attach_assignment_draft(result: dict, assignment_id: int) -> dict:
+    result.update(draft_row_to_dict(get_assignment_draft(assignment_id)))
+    return result
+
+
+def save_assignment_draft(assignment_id: int, content: str) -> dict:
+    row = get_assignment_by_id(assignment_id)
+    if row is None:
+        raise ValueError("assignment_not_found")
+    if row["type"] not in PRACTICE_MODES:
+        raise ValueError("draft_not_supported")
+    if get_submission_by_assignment(assignment_id):
+        raise ValueError("assignment_already_submitted")
+
+    updated_at = datetime.now().isoformat(timespec="seconds")
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO assignment_drafts (assignment_id, content, char_count, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(assignment_id) DO UPDATE SET
+              content = excluded.content,
+              char_count = excluded.char_count,
+              updated_at = excluded.updated_at
+            """,
+            (assignment_id, content, len(content), updated_at),
+        )
+    return {
+        "assignmentId": assignment_id,
+        "draftContent": content,
+        "draftCharCount": len(content),
+        "draftUpdatedAt": updated_at,
+    }
+
+
+def delete_assignment_draft(assignment_id: int) -> dict:
+    with connect() as conn:
+        conn.execute("DELETE FROM assignment_drafts WHERE assignment_id = ?", (assignment_id,))
+    return {"ok": True}
+
+
 def get_current_unsubmitted_assignment(date: str, mode: str) -> sqlite3.Row | None:
     with connect() as conn:
         return conn.execute(
@@ -377,6 +436,8 @@ async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
     sub = get_submission_by_assignment(row["id"])
     if sub:
         result["submission"] = submission_row_to_dict(sub)
+    else:
+        attach_assignment_draft(result, row["id"])
     return result
 
 
@@ -401,7 +462,7 @@ async def get_or_create_today_image_practice(cfg: FullConfig) -> dict:
         data = await generate_image_practice_assignment(focus, cfg, recent)
         aid = insert_assignment(data, today)
         row = get_assignment_by_id(aid)
-    return assignment_row_to_dict(row)
+    return attach_assignment_draft(assignment_row_to_dict(row), row["id"])
 
 
 async def replace_today_image_practice(cfg: FullConfig) -> dict:
@@ -432,6 +493,8 @@ async def get_or_create_today_outline_practice(cfg: FullConfig) -> dict:
     sub = get_submission_by_assignment(row["id"])
     if sub:
         result["submission"] = submission_row_to_dict(sub)
+    else:
+        attach_assignment_draft(result, row["id"])
     result.update(status)
     return result
 
@@ -523,6 +586,7 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
             ),
         )
         sid = cur.lastrowid
+        conn.execute("DELETE FROM assignment_drafts WHERE assignment_id = ?", (assignment_id,))
 
     return {
         "id": sid,

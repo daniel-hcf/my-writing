@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS submissions (
 CREATE INDEX IF NOT EXISTS idx_submissions_date ON submissions(date);
 CREATE INDEX IF NOT EXISTS idx_submissions_assignment ON submissions(assignment_id);
 
+CREATE TABLE IF NOT EXISTS assignment_drafts (
+  assignment_id INTEGER PRIMARY KEY REFERENCES assignments(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  char_count INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_assignment_drafts_updated_at ON assignment_drafts(updated_at);
+
 CREATE TABLE IF NOT EXISTS rss_sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,

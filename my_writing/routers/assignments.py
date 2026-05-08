@@ -2,9 +2,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
+from ..models import AssignmentDraftUpdate
 from ..services import (
     assignment_row_to_dict,
     cleanup_orphan_assignments,
+    delete_assignment_draft,
     get_assignment_by_id,
     get_or_create_journal_assignment,
     get_or_create_today_outline_practice,
@@ -16,6 +18,7 @@ from ..services import (
     replace_today_daily_assignment,
     replace_today_image_practice,
     replace_today_outline_practice,
+    save_assignment_draft,
 )
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
@@ -102,6 +105,25 @@ async def new_outline_practice_assignment():
 def journal():
     today = datetime.now().strftime("%Y-%m-%d")
     return get_or_create_journal_assignment(today)
+
+
+@router.put("/{aid}/draft")
+def save_draft(aid: int, payload: AssignmentDraftUpdate):
+    try:
+        return save_assignment_draft(aid, payload.content)
+    except ValueError as exc:
+        if str(exc) == "assignment_not_found":
+            raise HTTPException(status_code=404, detail="assignment not found")
+        if str(exc) == "draft_not_supported":
+            raise HTTPException(status_code=400, detail="draft is not supported for this assignment type")
+        if str(exc) == "assignment_already_submitted":
+            raise HTTPException(status_code=400, detail="assignment already submitted")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/{aid}/draft")
+def delete_draft(aid: int):
+    return delete_assignment_draft(aid)
 
 
 @router.get("/{aid}")

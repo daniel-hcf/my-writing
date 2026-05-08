@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { charCount, el, modeLabel, showToast } from "../utils.js";
+import { buildDraftControls, confirmDiscardDraft, createDraftController, updateDraftStatus } from "./draft_common.js";
 import { buildTipsPanel, renderScoredResult } from "./practice_common.js";
 
 const MIN = 300;
@@ -7,10 +8,10 @@ const TARGET = "300~800";
 const STORY_SEED_TIPS = {
   focus: "把一句故事种子扩写成一场完整小说片段，优先让环境、动作和心理推动情绪变化。",
   skills: [
-    "先确定主角此刻想要什么，再让环境或他人的动作形成阻碍",
-    "环境描写不要停在布景，要和主角的心理互相映照",
-    "用动作承载犹豫、逃避、靠近或爆发，少直接解释情绪",
-    "结尾留一个变化：信息改变、关系改变，或主角心态改变",
+    "先确定主角此刻想要什么，再让环境或他人的动作形成阻碍。",
+    "环境描写不要停在布景，要和主角的心理互相映照。",
+    "用动作承载犹豫、逃避、靠近或爆发，少直接解释情绪。",
+    "结尾留一个变化：信息改变、关系改变，或主角心态改变。",
   ],
 };
 
@@ -44,6 +45,7 @@ function renderAssignment(root, ctx, assignment) {
 
   const changeBtn = el("button", { class: "btn secondary btn-sm" }, "换一题");
   changeBtn.addEventListener("click", async () => {
+    if (!confirmDiscardDraft(assignment, textarea)) return;
     changeBtn.disabled = true;
     changeBtn.textContent = "生成中...";
     try {
@@ -75,22 +77,30 @@ function renderAssignment(root, ctx, assignment) {
     rows: "16",
     placeholder: `请把故事种子扩写成一场完整小说片段，目标 ${TARGET} 字，至少 ${MIN} 字...`,
   });
-  const counter = el("div", { class: "char-count" }, `0 / ${MIN}（目标 ${TARGET}）`);
-  const submitBtn = el("button", { class: "btn" }, "提交评分");
-  submitBtn.disabled = true;
+  textarea.value = assignment.draftContent || "";
 
-  textarea.addEventListener("input", () => {
+  const counter = el("div", { class: "char-count" });
+  const submitBtn = el("button", { class: "btn" }, "提交评分");
+  const updateCount = () => {
     const count = charCount(textarea.value);
     counter.textContent = `${count} / ${MIN}（目标 ${TARGET}）`;
     counter.classList.toggle("ok", count >= MIN);
     submitBtn.disabled = count < MIN;
-  });
+  };
+  textarea.addEventListener("input", updateCount);
+  updateCount();
+
+  const draftStatus = el("div", { class: "draft-status muted" });
+  const draftController = createDraftController(assignment, textarea, (state) => updateDraftStatus(draftStatus, state));
+  if (assignment.draftContent) updateDraftStatus(draftStatus, "saved");
 
   submitBtn.addEventListener("click", async () => {
     submitBtn.disabled = true;
     submitBtn.textContent = "正在评分...";
     try {
+      await draftController.flush();
       const result = await api.submit(assignment.id, textarea.value);
+      api.deleteDraft(assignment.id).catch(() => {});
       renderResult(root, ctx, assignment, result);
     } catch (e) {
       showToast(`评分失败：${e.message}`, "error");
@@ -109,6 +119,7 @@ function renderAssignment(root, ctx, assignment) {
     textarea,
     counter,
     el("div", { class: "row", style: "margin-top:8px;" }, [
+      ...buildDraftControls(draftController, draftStatus),
       el("div", { class: "spacer" }),
       submitBtn,
     ]),

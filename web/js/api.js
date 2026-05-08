@@ -51,6 +51,8 @@ export const api = {
   newOutlinePractice: () => request("POST", "/api/assignments/outline-practice/new"),
   getJournalAssignment: () => request("GET", "/api/assignments/journal"),
   getAssignment: (id) => request("GET", `/api/assignments/${id}`),
+  saveDraft: (assignmentId, content) => request("PUT", `/api/assignments/${assignmentId}/draft`, { content }),
+  deleteDraft: (assignmentId) => request("DELETE", `/api/assignments/${assignmentId}/draft`),
 
   submit: (assignmentId, content) => request("POST", "/api/submissions", { assignmentId, content }),
   listSubmissions: (limit = 50) => request("GET", `/api/submissions?limit=${limit}`),

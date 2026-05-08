@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { GENERAL_TIPS, TIPS } from "../tips.js";
 import { charCount, el, escapeHtml, modeLabel, showToast } from "../utils.js";
+import { buildDraftControls, confirmDiscardDraft, createDraftController, updateDraftStatus } from "./draft_common.js";
 import { buildTipsPanel, renderScoredResult } from "./practice_common.js";
 
 const MIN = 500;
@@ -35,6 +36,7 @@ function renderAssignment(root, ctx, assignment) {
 
   const refreshBtn = el("button", { class: "btn secondary btn-sm" }, "换一张");
   refreshBtn.addEventListener("click", async () => {
+    if (!confirmDiscardDraft(assignment, textarea)) return;
     refreshBtn.disabled = true;
     refreshBtn.textContent = "生成中...";
     try {
@@ -66,22 +68,30 @@ function renderAssignment(root, ctx, assignment) {
     rows: "16",
     placeholder: `请围绕题图写作，至少 ${MIN} 字...`,
   });
-  const counter = el("div", { class: "char-count" }, `0 / ${MIN}`);
-  const submitBtn = el("button", { class: "btn" }, "提交评分");
-  submitBtn.disabled = true;
+  textarea.value = assignment.draftContent || "";
 
-  textarea.addEventListener("input", () => {
+  const counter = el("div", { class: "char-count" });
+  const submitBtn = el("button", { class: "btn" }, "提交评分");
+  const updateCount = () => {
     const count = charCount(textarea.value);
     counter.textContent = `${count} / ${MIN}`;
     counter.classList.toggle("ok", count >= MIN);
     submitBtn.disabled = count < MIN;
-  });
+  };
+  textarea.addEventListener("input", updateCount);
+  updateCount();
+
+  const draftStatus = el("div", { class: "draft-status muted" });
+  const draftController = createDraftController(assignment, textarea, (state) => updateDraftStatus(draftStatus, state));
+  if (assignment.draftContent) updateDraftStatus(draftStatus, "saved");
 
   submitBtn.addEventListener("click", async () => {
     submitBtn.disabled = true;
     submitBtn.textContent = "正在评分...";
     try {
+      await draftController.flush();
       const result = await api.submit(assignment.id, textarea.value);
+      api.deleteDraft(assignment.id).catch(() => {});
       renderResult(root, ctx, assignment, result);
     } catch (e) {
       showToast(`评分失败：${e.message}`, "error");
@@ -95,6 +105,7 @@ function renderAssignment(root, ctx, assignment) {
     textarea,
     counter,
     el("div", { class: "row", style: "margin-top:8px;" }, [
+      ...buildDraftControls(draftController, draftStatus),
       el("div", { class: "spacer" }),
       submitBtn,
     ]),
