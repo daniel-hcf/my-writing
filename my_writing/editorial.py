@@ -384,6 +384,13 @@ def material_row_to_dict(row: sqlite3.Row) -> dict:
 
 
 def _materials_for_brief(date: str, per_channel_limit: int = 12) -> list[dict]:
+    materials = _materials_for_brief_by_created_date(date, per_channel_limit)
+    if materials:
+        return materials
+    return _recent_materials_for_brief(per_channel_limit)
+
+
+def _materials_for_brief_by_created_date(date: str, per_channel_limit: int) -> list[dict]:
     materials = []
     with connect() as conn:
         for channel in (CHANNEL_SOCIAL, CHANNEL_STORY):
@@ -398,6 +405,25 @@ def _materials_for_brief(date: str, per_channel_limit: int = 12) -> list[dict]:
                 LIMIT ?
                 """,
                 (date, channel, per_channel_limit),
+            ).fetchall()
+            materials.extend(material_row_to_dict(row) for row in rows)
+    return materials
+
+
+def _recent_materials_for_brief(per_channel_limit: int) -> list[dict]:
+    materials = []
+    with connect() as conn:
+        for channel in (CHANNEL_SOCIAL, CHANNEL_STORY):
+            rows = conn.execute(
+                """
+                SELECT m.*, s.name AS source_name
+                FROM materials m
+                INNER JOIN rss_sources s ON s.id = m.source_id
+                WHERE m.channel = ?
+                ORDER BY m.id DESC
+                LIMIT ?
+                """,
+                (channel, per_channel_limit),
             ).fetchall()
             materials.extend(material_row_to_dict(row) for row in rows)
     return materials
