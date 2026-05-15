@@ -130,6 +130,11 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         user_prompt = prompts.daily_assignment_user("场景描写")
 
         self.assertIn("故事种子", user_prompt)
+        self.assertIn("男频爽文", user_prompt)
+        self.assertIn("爽点", user_prompt)
+        self.assertIn("压迫", user_prompt)
+        self.assertIn("反击", user_prompt)
+        self.assertIn("追读", user_prompt)
         self.assertIn("300~800", user_prompt)
         self.assertIn("20~60", user_prompt)
         self.assertIn("环境、动作、心理", user_prompt)
@@ -138,6 +143,11 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
     def test_outline_prompt_targets_structure_and_conflict(self):
         user_prompt = prompts.outline_practice_user("叙事结构")
 
+        self.assertIn("男频爽文", user_prompt)
+        self.assertIn("爽点", user_prompt)
+        self.assertIn("反击", user_prompt)
+        self.assertIn("升级", user_prompt)
+        self.assertIn("尾钩", user_prompt)
         self.assertIn("20~80", user_prompt)
         self.assertIn("100~200 字故事小纲", user_prompt)
         self.assertIn("不要写成完整故事小纲", user_prompt)
@@ -145,6 +155,39 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("故事结构", user_prompt)
         self.assertIn("冲突", user_prompt)
         self.assertIn('"scenario"', user_prompt)
+
+    def test_image_prompt_targets_male_webnovel_visual_conflict(self):
+        user_prompt = prompts.image_practice_user("人物塑造")
+
+        self.assertIn("男频爽文", user_prompt)
+        self.assertIn("爽点", user_prompt)
+        self.assertIn("压迫", user_prompt)
+        self.assertIn("资源争夺", user_prompt)
+        self.assertIn("强敌逼迫", user_prompt)
+        self.assertIn("追读", user_prompt)
+        self.assertIn('"title"', user_prompt)
+        self.assertIn('"imagePrompt"', user_prompt)
+
+    def test_scoring_prompt_uses_strict_male_webnovel_editor_standards(self):
+        system_prompt = prompts.scoring_system()
+        user_prompt = prompts.scoring_user(
+            {
+                "type": "daily",
+                "title": "退婚当天",
+                "scenario": "众人逼主角交出祖传玉牌时，他听见玉牌里传来师尊的声音。",
+                "focus_dimension": "叙事结构",
+            },
+            "x" * 320,
+        )
+        combined = system_prompt + "\n" + user_prompt
+
+        for word in ("男频爽文", "责编", "开篇钩子", "压迫感", "反击爽点", "升级感", "尾钩", "追读欲"):
+            self.assertIn(word, combined)
+        for word in ("不默认高分", "不硬夸", "普通完成不应轻易给 8 分以上"):
+            self.assertIn(word, combined)
+        for dim in prompts.DIMENSIONS:
+            self.assertIn(f'"{dim}"', user_prompt)
+        self.assertNotIn(f'"{prompts.DIMENSIONS[0]}": 8', user_prompt)
 
     async def test_get_or_create_today_assignment_returns_daily_and_reuses_it(self):
         generator = getattr(services, "generate_daily_assignment", None)
