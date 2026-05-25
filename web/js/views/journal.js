@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { DIMENSIONS, charCount, el, escapeHtml, scoreClass, showToast } from "../utils.js";
 import { renderRadar } from "../charts.js";
+import { renderMarketSignals } from "./practice_common.js";
 
 export async function renderJournal(root, ctx) {
   root.innerHTML = "";
@@ -94,6 +95,10 @@ function renderJournalResult(root, ctx, assignment, result) {
     );
   }
   scoresCard.appendChild(grid);
+  const marketSignals = renderMarketSignals(result);
+  if (marketSignals) {
+    scoresCard.appendChild(marketSignals);
+  }
   if (result.overall) {
     scoresCard.appendChild(el("p", { class: "muted", style: "margin-top:12px;" }, result.overall));
   }

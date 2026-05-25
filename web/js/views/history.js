@@ -1,5 +1,6 @@
 import { api } from "../api.js";
 import { DIMENSIONS, el, escapeHtml, modeLabel, scoreClass, showToast } from "../utils.js";
+import { renderMarketSignals } from "./practice_common.js";
 
 const GROUP_ORDER = ["daily", "outline_practice", "image_practice", "journal"];
 
@@ -109,6 +110,10 @@ async function showDetail(root, sid) {
     ]));
   }
   scoreCard.appendChild(grid);
+  const marketSignals = renderMarketSignals(detail);
+  if (marketSignals) {
+    scoreCard.appendChild(marketSignals);
+  }
   if (detail.overall) {
     scoreCard.appendChild(el("p", { class: "muted", style: "margin-top:12px;" }, detail.overall));
   }

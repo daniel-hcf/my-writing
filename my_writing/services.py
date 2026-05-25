@@ -547,6 +547,24 @@ def assignment_row_to_dict(row: sqlite3.Row | None) -> dict:
     }
 
 
+def _clamped_score(value: object, default: int = 5) -> int:
+    try:
+        score_int = int(round(float(value)))
+    except (TypeError, ValueError):
+        score_int = default
+    return max(1, min(10, score_int))
+
+
+def _rewrite_task_to_dict(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        raw = {}
+    return {
+        "target": (raw.get("target") or "").strip(),
+        "requirement": (raw.get("requirement") or "").strip(),
+        "wordLimit": (raw.get("word_limit") or raw.get("wordLimit") or "").strip(),
+    }
+
+
 async def score_submission(assignment_id: int, content: str, cfg: FullConfig) -> dict:
     row = get_assignment_by_id(assignment_id)
     if row is None:
@@ -571,16 +589,16 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
     scores_raw = data.get("scores") or {}
     feedback_raw = data.get("feedback") or {}
     overall = (data.get("overall") or "").strip()
+    market_score = _clamped_score(data.get("market_score") or data.get("marketScore"))
+    training_score = _clamped_score(data.get("training_score") or data.get("trainingScore"))
+    fatal_problem = (data.get("fatal_problem") or data.get("fatalProblem") or "").strip()
+    best_part = (data.get("best_part") or data.get("bestPart") or "").strip()
+    rewrite_task = _rewrite_task_to_dict(data.get("rewrite_task") or data.get("rewriteTask"))
 
     scores: dict[str, int] = {}
     feedback: dict[str, dict] = {}
     for dim in DIMENSIONS:
-        score = scores_raw.get(dim, 5)
-        try:
-            score_int = int(round(float(score)))
-        except (TypeError, ValueError):
-            score_int = 5
-        scores[dim] = max(1, min(10, score_int))
+        scores[dim] = _clamped_score(scores_raw.get(dim, 5))
         dim_feedback = feedback_raw.get(dim) or {}
         feedback[dim] = {
             "优点": (dim_feedback.get("优点") or "").strip(),
@@ -602,7 +620,18 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
                 content,
                 len(content),
                 json.dumps(scores, ensure_ascii=False),
-                json.dumps({"dims": feedback, "overall": overall}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "dims": feedback,
+                        "overall": overall,
+                        "marketScore": market_score,
+                        "trainingScore": training_score,
+                        "fatalProblem": fatal_problem,
+                        "bestPart": best_part,
+                        "rewriteTask": rewrite_task,
+                    },
+                    ensure_ascii=False,
+                ),
                 datetime.now().isoformat(timespec="seconds"),
             ),
         )
@@ -616,6 +645,11 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
         "scores": scores,
         "feedback": feedback,
         "overall": overall,
+        "marketScore": market_score,
+        "trainingScore": training_score,
+        "fatalProblem": fatal_problem,
+        "bestPart": best_part,
+        "rewriteTask": rewrite_task,
     }
 
 
@@ -624,9 +658,19 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
     if isinstance(feedback_raw, dict) and "dims" in feedback_raw:
         feedback = feedback_raw["dims"]
         overall = feedback_raw.get("overall", "")
+        market_score = feedback_raw.get("marketScore")
+        training_score = feedback_raw.get("trainingScore")
+        fatal_problem = feedback_raw.get("fatalProblem", "")
+        best_part = feedback_raw.get("bestPart", "")
+        rewrite_task = feedback_raw.get("rewriteTask", {})
     else:
         feedback = feedback_raw
         overall = ""
+        market_score = None
+        training_score = None
+        fatal_problem = ""
+        best_part = ""
+        rewrite_task = {}
     return {
         "id": row["id"],
         "assignmentId": row["assignment_id"],
@@ -636,6 +680,11 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
         "scores": json.loads(row["scores"]),
         "feedback": feedback,
         "overall": overall,
+        "marketScore": market_score,
+        "trainingScore": training_score,
+        "fatalProblem": fatal_problem,
+        "bestPart": best_part,
+        "rewriteTask": rewrite_task,
         "createdAt": row["created_at"],
     }
 

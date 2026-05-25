@@ -60,3 +60,13 @@ class FrontendContractsTest(unittest.TestCase):
         self.assertIn("api.repeatDailyAssignment", source)
         self.assertIn("api.newAssignment", source)
         self.assertIn("renderAssignment(root, ctx, next)", source)
+
+    def test_scored_results_surface_market_signals_and_rewrite_task(self):
+        common = (ROOT / "web" / "js" / "views" / "practice_common.js").read_text(encoding="utf-8")
+        for label in ("市场追读", "练习完成", "最致命问题", "最佳部分", "下一稿任务", "rewriteTask"):
+            self.assertIn(label, common)
+
+        for name in ("history.js", "journal.js"):
+            source = (ROOT / "web" / "js" / "views" / name).read_text(encoding="utf-8")
+            with self.subTest(view=name):
+                self.assertIn("renderMarketSignals", source)

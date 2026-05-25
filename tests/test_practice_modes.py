@@ -183,6 +183,10 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
 
         for word in ("男频爽文", "责编", "开篇钩子", "压迫感", "反击爽点", "升级感", "尾钩", "追读欲"):
             self.assertIn(word, combined)
+        for word in ("追读欲 / 尾钩：20%", "爽点完成度：20%", "压迫与反击：20%", "市场连载追读标准"):
+            self.assertIn(word, combined)
+        for field in ("market_score", "training_score", "fatal_problem", "best_part", "rewrite_task"):
+            self.assertIn(f'"{field}"', user_prompt)
         for word in ("不默认高分", "不硬夸", "普通完成不应轻易给 8 分以上"):
             self.assertIn(word, combined)
         for dim in prompts.DIMENSIONS:
@@ -471,6 +475,55 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         with connect() as conn:
             draft = conn.execute("SELECT * FROM assignment_drafts WHERE assignment_id = ?", (aid,)).fetchone()
         self.assertIsNone(draft)
+
+    async def test_score_submission_preserves_market_training_and_rewrite_task(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "score metadata", "seed", None, None, f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        fake_provider = AsyncMock()
+        fake_provider.chat = AsyncMock(
+            return_value="""
+            {
+              "market_score": 4,
+              "training_score": 7,
+              "fatal_problem": "主角没有主动反击，追读欲断掉",
+              "best_part": "天雷降临前的停顿有画面感",
+              "rewrite_task": {
+                "target": "测出五行杂灵根后到天雷降临前",
+                "requirement": "加入群嘲、主角一句反问、长老一句判死刑式压制、血滴石碑的停顿",
+                "word_limit": "300字以内"
+              },
+              "scores": {},
+              "feedback": {},
+              "overall": "优先补压迫与反击。"
+            }
+            """
+        )
+        with patch.object(services, "get_text_provider", return_value=fake_provider):
+            result = await services.score_submission(aid, "x" * 320, self.cfg)
+
+        self.assertEqual(result["marketScore"], 4)
+        self.assertEqual(result["trainingScore"], 7)
+        self.assertEqual(result["fatalProblem"], "主角没有主动反击，追读欲断掉")
+        self.assertEqual(result["bestPart"], "天雷降临前的停顿有画面感")
+        self.assertEqual(result["rewriteTask"]["target"], "测出五行杂灵根后到天雷降临前")
+        self.assertEqual(result["rewriteTask"]["wordLimit"], "300字以内")
+
+        with connect() as conn:
+            row = conn.execute("SELECT * FROM submissions WHERE assignment_id = ?", (aid,)).fetchone()
+        restored = services.submission_row_to_dict(row)
+        self.assertEqual(restored["marketScore"], 4)
+        self.assertEqual(restored["trainingScore"], 7)
+        self.assertEqual(restored["fatalProblem"], "主角没有主动反击，追读欲断掉")
+        self.assertEqual(restored["rewriteTask"]["requirement"], "加入群嘲、主角一句反问、长老一句判死刑式压制、血滴石碑的停顿")
 
     async def test_outline_practice_waits_until_three_days_after_completion(self):
         today = datetime.now().strftime("%Y-%m-%d")

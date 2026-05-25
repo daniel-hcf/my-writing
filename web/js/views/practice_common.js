@@ -10,6 +10,30 @@ export function buildTipsPanel(focusDimension, tips) {
   ]);
 }
 
+export function renderMarketSignals(result) {
+  const items = [];
+  if (result.marketScore !== null && result.marketScore !== undefined) {
+    items.push(el("div", {}, [el("span", { class: "label" }, "市场追读："), `${result.marketScore} / 10`]));
+  }
+  if (result.trainingScore !== null && result.trainingScore !== undefined) {
+    items.push(el("div", {}, [el("span", { class: "label" }, "练习完成："), `${result.trainingScore} / 10`]));
+  }
+  if (result.fatalProblem) {
+    items.push(el("div", {}, [el("span", { class: "label" }, "最致命问题："), result.fatalProblem]));
+  }
+  if (result.bestPart) {
+    items.push(el("div", {}, [el("span", { class: "label" }, "最佳部分："), result.bestPart]));
+  }
+  if (result.rewriteTask) {
+    const task = result.rewriteTask;
+    const taskText = [task.target, task.requirement, task.wordLimit].filter(Boolean).join("；");
+    if (taskText) {
+      items.push(el("div", {}, [el("span", { class: "label" }, "下一稿任务："), taskText]));
+    }
+  }
+  return items.length ? el("div", { class: "feedback-block", style: "margin-top:12px;" }, items) : null;
+}
+
 export function renderScoredResult(root, assignment, result, footerActions = []) {
   root.innerHTML = "";
 
@@ -34,6 +58,10 @@ export function renderScoredResult(root, assignment, result, footerActions = [])
     );
   }
   scoresCard.appendChild(grid);
+  const marketSignals = renderMarketSignals(result);
+  if (marketSignals) {
+    scoresCard.appendChild(marketSignals);
+  }
   if (result.overall) {
     scoresCard.appendChild(el("p", { class: "muted", style: "margin-top:12px;" }, result.overall));
   }
