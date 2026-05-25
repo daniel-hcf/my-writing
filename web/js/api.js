@@ -45,6 +45,7 @@ export const api = {
 
   getTodayAssignment: () => request("GET", "/api/assignments/today"),
   newAssignment: () => request("POST", "/api/assignments/new"),
+  repeatDailyAssignment: (assignmentId) => request("POST", `/api/assignments/${assignmentId}/repeat`),
   getTodayImagePractice: () => request("GET", "/api/assignments/image-practice/today"),
   newImagePractice: () => request("POST", "/api/assignments/image-practice/new"),
   getTodayOutlinePractice: () => request("GET", "/api/assignments/outline-practice/today"),

@@ -36,6 +36,12 @@ class FrontendContractsTest(unittest.TestCase):
         self.assertIn("deleteDraft", source)
         self.assertIn("/draft", source)
 
+    def test_daily_repeat_endpoint_is_exposed_in_frontend_api(self):
+        source = (ROOT / "web" / "js" / "api.js").read_text(encoding="utf-8")
+
+        self.assertIn("repeatDailyAssignment", source)
+        self.assertIn("/repeat", source)
+
     def test_scored_practice_views_use_backend_drafts(self):
         for name in ("daily.js", "image_practice.js", "outline_practice.js"):
             source = (ROOT / "web" / "js" / "views" / name).read_text(encoding="utf-8")
@@ -45,3 +51,12 @@ class FrontendContractsTest(unittest.TestCase):
                 self.assertIn("buildDraftControls", source)
                 self.assertIn("api.deleteDraft", source)
                 self.assertIn("confirmDiscardDraft", source)
+
+    def test_daily_result_view_offers_repeat_and_new_prompt_actions(self):
+        source = (ROOT / "web" / "js" / "views" / "daily.js").read_text(encoding="utf-8")
+
+        self.assertIn("再写同一题", source)
+        self.assertIn("换一题再写", source)
+        self.assertIn("api.repeatDailyAssignment", source)
+        self.assertIn("api.newAssignment", source)
+        self.assertIn("renderAssignment(root, ctx, next)", source)

@@ -425,7 +425,9 @@ def get_or_create_journal_assignment(date: str) -> dict:
 
 async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
-    row = get_assignment_by_date(today, mode_filter=MODE_DAILY)
+    row = get_current_unsubmitted_assignment(today, MODE_DAILY)
+    if not row:
+        row = get_assignment_by_date(today, mode_filter=MODE_DAILY)
     if not row:
         focus = latest_weakest_dimension()
         recent = recent_assignment_titles(MODE_DAILY)
@@ -443,14 +445,33 @@ async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
 
 async def replace_today_daily_assignment(cfg: FullConfig) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
-    if assignment_mode_has_submission(today, MODE_DAILY):
-        raise ValueError("今日主练已完成，不能再换题")
     delete_unsubmitted_assignments(today, MODE_DAILY)
     focus = latest_weakest_dimension()
     recent = recent_assignment_titles(MODE_DAILY)
     data = await generate_daily_assignment(focus, cfg, recent)
     aid = insert_assignment(data, today)
-    return assignment_row_to_dict(get_assignment_by_id(aid))
+    return attach_assignment_draft(assignment_row_to_dict(get_assignment_by_id(aid)), aid)
+
+
+def repeat_daily_assignment(assignment_id: int) -> dict:
+    row = get_assignment_by_id(assignment_id)
+    if row is None:
+        raise ValueError("assignment_not_found")
+    if row["type"] != MODE_DAILY:
+        raise ValueError("repeat_only_supports_daily")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    aid = insert_assignment(
+        {
+            "type": MODE_DAILY,
+            "title": row["title"],
+            "scenario": row["scenario"],
+            "image_data": None,
+            "focus_dimension": row["focus_dimension"],
+        },
+        today,
+    )
+    return attach_assignment_draft(assignment_row_to_dict(get_assignment_by_id(aid)), aid)
 
 
 async def get_or_create_today_image_practice(cfg: FullConfig) -> dict:

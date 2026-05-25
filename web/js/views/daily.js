@@ -130,7 +130,37 @@ function renderAssignment(root, ctx, assignment) {
 }
 
 function renderResult(root, ctx, assignment, result) {
+  const repeatBtn = el("button", { class: "btn" }, "再写同一题");
+  repeatBtn.addEventListener("click", async () => {
+    repeatBtn.disabled = true;
+    repeatBtn.textContent = "正在准备...";
+    try {
+      const next = await api.repeatDailyAssignment(assignment.id);
+      renderAssignment(root, ctx, next);
+    } catch (e) {
+      showToast(`创建练习失败：${e.message}`, "error");
+      repeatBtn.disabled = false;
+      repeatBtn.textContent = "再写同一题";
+    }
+  });
+
+  const newPromptBtn = el("button", { class: "btn secondary" }, "换一题再写");
+  newPromptBtn.addEventListener("click", async () => {
+    newPromptBtn.disabled = true;
+    newPromptBtn.textContent = "正在生成...";
+    try {
+      const next = await api.newAssignment();
+      renderAssignment(root, ctx, next);
+    } catch (e) {
+      showToast(`生成题目失败：${e.message}`, "error");
+      newPromptBtn.disabled = false;
+      newPromptBtn.textContent = "换一题再写";
+    }
+  });
+
   renderScoredResult(root, assignment, result, [
+    repeatBtn,
+    newPromptBtn,
     el("button", { class: "btn secondary", onclick: () => ctx.navigate("outline_practice") }, "去写故事小纲"),
     el("button", { class: "btn secondary", onclick: () => ctx.navigate("image_practice") }, "去看图写作"),
     el("div", { class: "spacer" }),

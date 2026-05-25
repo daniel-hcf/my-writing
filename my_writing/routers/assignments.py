@@ -18,6 +18,7 @@ from ..services import (
     replace_today_daily_assignment,
     replace_today_image_practice,
     replace_today_outline_practice,
+    repeat_daily_assignment,
     save_assignment_draft,
 )
 
@@ -124,6 +125,18 @@ def save_draft(aid: int, payload: AssignmentDraftUpdate):
 @router.delete("/{aid}/draft")
 def delete_draft(aid: int):
     return delete_assignment_draft(aid)
+
+
+@router.post("/{aid}/repeat")
+def repeat_assignment(aid: int):
+    try:
+        return repeat_daily_assignment(aid)
+    except ValueError as exc:
+        if str(exc) == "assignment_not_found":
+            raise HTTPException(status_code=404, detail="assignment not found")
+        if str(exc) == "repeat_only_supports_daily":
+            raise HTTPException(status_code=400, detail="repeat is only supported for daily assignments")
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/{aid}")

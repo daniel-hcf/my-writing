@@ -220,6 +220,102 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored["draftContent"], "saved daily draft")
         self.assertEqual(restored["draftCharCount"], len("saved daily draft"))
 
+    async def test_daily_assignment_prefers_unsubmitted_after_submission(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "submitted daily", "old seed", None, "structure", f"{today}T00:00:00"),
+            )
+            submitted_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO submissions
+                  (assignment_id, date, content, char_count, scores, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (submitted_id, today, "x" * 300, 300, "{}", "{}", f"{today}T00:01:00"),
+            )
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "open daily", "new seed", None, "character", f"{today}T00:02:00"),
+            )
+            open_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        result = await services.get_or_create_today_assignment(self.cfg)
+
+        self.assertEqual(result["id"], open_id)
+        self.assertNotIn("submission", result)
+        self.assertEqual(result["draftContent"], "")
+
+    async def test_replace_today_daily_assignment_allows_new_after_submission(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "submitted daily", "old seed", None, None, f"{today}T00:00:00"),
+            )
+            submitted_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute(
+                """
+                INSERT INTO submissions
+                  (assignment_id, date, content, char_count, scores, feedback, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (submitted_id, today, "x" * 300, 300, "{}", "{}", f"{today}T00:01:00"),
+            )
+
+        with patch.object(
+            services,
+            "generate_daily_assignment",
+            AsyncMock(
+                return_value={
+                    "type": "daily",
+                    "title": "new daily",
+                    "scenario": "new seed",
+                    "image_data": None,
+                    "focus_dimension": None,
+                }
+            ),
+        ) as gen:
+            result = await services.replace_today_daily_assignment(self.cfg)
+
+        self.assertNotEqual(result["id"], submitted_id)
+        self.assertEqual(result["title"], "new daily")
+        self.assertEqual(gen.await_count, 1)
+
+    def test_repeat_daily_assignment_copies_prompt_for_today(self):
+        source_date = "2026-04-29"
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (source_date, "daily", "source daily", "source seed", None, "environment", f"{source_date}T00:00:00"),
+            )
+            source_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        result = services.repeat_daily_assignment(source_id)
+
+        self.assertNotEqual(result["id"], source_id)
+        self.assertEqual(result["date"], today)
+        self.assertEqual(result["type"], "daily")
+        self.assertEqual(result["title"], "source daily")
+        self.assertEqual(result["scenario"], "source seed")
+        self.assertEqual(result["focusDimension"], "environment")
+        self.assertEqual(result["draftContent"], "")
+
     async def test_image_practice_reuses_current_unsubmitted_and_allows_new_after_submit(self):
         creator = getattr(services, "get_or_create_today_image_practice", None)
         self.assertIsNotNone(creator)
