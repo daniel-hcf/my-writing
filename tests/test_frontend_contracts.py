@@ -70,3 +70,30 @@ class FrontendContractsTest(unittest.TestCase):
             source = (ROOT / "web" / "js" / "views" / name).read_text(encoding="utf-8")
             with self.subTest(view=name):
                 self.assertIn("renderMarketSignals", source)
+
+    def test_outline_coach_frontend_contracts_are_exposed(self):
+        index = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        app = (ROOT / "web" / "js" / "app.js").read_text(encoding="utf-8")
+        api = (ROOT / "web" / "js" / "api.js").read_text(encoding="utf-8")
+        view_path = ROOT / "web" / "js" / "views" / "long_outline.js"
+
+        self.assertTrue(view_path.exists())
+        view = view_path.read_text(encoding="utf-8")
+
+        self.assertIn('data-tab="long_outline"', index)
+        self.assertIn("renderLongOutline", app)
+        for method in (
+            "listOutlineProjects",
+            "createOutlineProject",
+            "getOutlineProject",
+            "updateOutlineProject",
+            "deleteOutlineProject",
+            "updateOutlineCharacters",
+            "updateOutlineVolume",
+            "updateOutlineChapter",
+            "reviewOutlineProject",
+            "reviewOutlineChapter",
+        ):
+            self.assertIn(method, api)
+        for label in ("引导填写", "大纲总览", "章节开写", "轻量人物", "前10章章节纲"):
+            self.assertIn(label, view)

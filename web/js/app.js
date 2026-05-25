@@ -5,6 +5,7 @@ import { renderDaily } from "./views/daily.js";
 import { renderHistory } from "./views/history.js";
 import { renderImagePractice } from "./views/image_practice.js";
 import { renderJournal } from "./views/journal.js";
+import { renderLongOutline } from "./views/long_outline.js";
 import { renderOutlinePractice } from "./views/outline_practice.js";
 import { renderEditorial } from "./views/editorial.js";
 import { renderSettings } from "./views/settings.js";
@@ -13,6 +14,7 @@ import { renderStats } from "./views/stats.js";
 const views = {
   daily: renderDaily,
   outline_practice: renderOutlinePractice,
+  long_outline: renderLongOutline,
   image_practice: renderImagePractice,
   journal: renderJournal,
   editorial: renderEditorial,
@@ -44,6 +46,7 @@ function setActiveTab(name) {
 
 function resolveNavigationTarget(name) {
   if (name === "settings") return "settings";
+  if (name === "long_outline") return "long_outline";
   if (!state.ready.text) {
     showToast("请先在设置页配置文本模型", "error");
     return "settings";

@@ -10,7 +10,7 @@ from .auth import require_auth
 from .config import HOST, PORT, WEB_DIR
 from .db import init_db
 from .editorial import start_editorial_scheduler
-from .routers import ai_test, assignments, auth, config as config_router, editorial, stats, submissions
+from .routers import ai_test, assignments, auth, config as config_router, editorial, outlines, stats, submissions
 from .services import load_full_config, migrate_config_secrets
 
 logging.basicConfig(
@@ -34,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(submissions.router, **protected)
     app.include_router(stats.router, **protected)
     app.include_router(editorial.router, **protected)
+    app.include_router(outlines.router, **protected)
 
     if WEB_DIR.exists():
         app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

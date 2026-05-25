@@ -44,6 +44,70 @@ CREATE TABLE IF NOT EXISTS assignment_drafts (
 );
 CREATE INDEX IF NOT EXISTS idx_assignment_drafts_updated_at ON assignment_drafts(updated_at);
 
+CREATE TABLE IF NOT EXISTS outline_projects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  genre TEXT NOT NULL DEFAULT '',
+  premise TEXT NOT NULL DEFAULT '',
+  main_goal TEXT NOT NULL DEFAULT '',
+  core_payoff TEXT NOT NULL DEFAULT '',
+  current_step TEXT NOT NULL DEFAULT 'core',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outline_projects_updated_at ON outline_projects(updated_at);
+
+CREATE TABLE IF NOT EXISTS outline_characters (
+  project_id INTEGER PRIMARY KEY REFERENCES outline_projects(id) ON DELETE CASCADE,
+  protagonist_identity TEXT NOT NULL DEFAULT '',
+  protagonist_goal TEXT NOT NULL DEFAULT '',
+  protagonist_weakness TEXT NOT NULL DEFAULT '',
+  protagonist_growth TEXT NOT NULL DEFAULT '',
+  antagonist_identity TEXT NOT NULL DEFAULT '',
+  antagonist_reason TEXT NOT NULL DEFAULT '',
+  antagonist_pressure TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS outline_volumes (
+  project_id INTEGER PRIMARY KEY REFERENCES outline_projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  goal TEXT NOT NULL DEFAULT '',
+  pressure TEXT NOT NULL DEFAULT '',
+  payoff TEXT NOT NULL DEFAULT '',
+  ending_hook TEXT NOT NULL DEFAULT '',
+  opening_hook TEXT NOT NULL DEFAULT '',
+  midpoint_escalation TEXT NOT NULL DEFAULT '',
+  final_explosion TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS outline_chapters (
+  project_id INTEGER NOT NULL REFERENCES outline_projects(id) ON DELETE CASCADE,
+  chapter_no INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  summary TEXT NOT NULL DEFAULT '',
+  payoff TEXT NOT NULL DEFAULT '',
+  hook TEXT NOT NULL DEFAULT '',
+  draft TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, chapter_no)
+);
+CREATE INDEX IF NOT EXISTS idx_outline_chapters_project ON outline_chapters(project_id);
+
+CREATE TABLE IF NOT EXISTS outline_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES outline_projects(id) ON DELETE CASCADE,
+  chapter_no INTEGER,
+  scope TEXT NOT NULL,
+  issues TEXT NOT NULL,
+  questions TEXT NOT NULL,
+  suggestions TEXT NOT NULL,
+  raw TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outline_reviews_project ON outline_reviews(project_id);
+
 CREATE TABLE IF NOT EXISTS rss_sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,

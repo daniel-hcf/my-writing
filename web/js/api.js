@@ -62,6 +62,18 @@ export const api = {
 
   getStats: (mode = "all") => request("GET", `/api/stats?mode=${encodeURIComponent(mode)}`),
 
+  listOutlineProjects: () => request("GET", "/api/outlines/projects"),
+  createOutlineProject: (payload) => request("POST", "/api/outlines/projects", payload),
+  getOutlineProject: (id) => request("GET", `/api/outlines/projects/${id}`),
+  updateOutlineProject: (id, payload) => request("PUT", `/api/outlines/projects/${id}`, payload),
+  deleteOutlineProject: (id) => request("DELETE", `/api/outlines/projects/${id}`),
+  updateOutlineCharacters: (id, payload) => request("PUT", `/api/outlines/projects/${id}/characters`, payload),
+  updateOutlineVolume: (id, payload) => request("PUT", `/api/outlines/projects/${id}/volume`, payload),
+  updateOutlineChapter: (id, chapterNo, payload) =>
+    request("PUT", `/api/outlines/projects/${id}/chapters/${chapterNo}`, payload),
+  reviewOutlineProject: (id, scope) => request("POST", `/api/outlines/projects/${id}/review`, { scope }),
+  reviewOutlineChapter: (id, chapterNo) => request("POST", `/api/outlines/projects/${id}/chapters/${chapterNo}/review`),
+
   listEditorialPacks: () => request("GET", "/api/editorial/packs"),
   importEditorialPack: (packId) => request("POST", `/api/editorial/packs/${encodeURIComponent(packId)}/import`),
   listRSSSources: () => request("GET", "/api/editorial/sources"),

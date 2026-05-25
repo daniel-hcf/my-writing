@@ -446,3 +446,148 @@ details.dim-detail summary {
   padding: 8px 10px;
   color: #7c2d12;
 }
+
+.outline-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.outline-project-card p {
+  min-height: 44px;
+  margin: 10px 0;
+}
+
+.outline-progress {
+  height: 8px;
+  overflow: hidden;
+  background: #eef0f3;
+  border-radius: 999px;
+  margin: 12px 0 8px;
+}
+
+.outline-progress-bar {
+  height: 100%;
+  background: var(--primary);
+}
+
+.outline-workbench {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 260px;
+  gap: 16px;
+  align-items: start;
+}
+
+.outline-step-nav,
+.outline-side-panel {
+  position: sticky;
+  top: 82px;
+}
+
+.outline-step-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.outline-step-item:last-child {
+  border-bottom: 0;
+}
+
+.outline-step-no {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  background: var(--primary);
+  border-radius: 50%;
+  font-size: 12px;
+}
+
+.outline-chapter-detail {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.outline-chapter-detail summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.outline-review {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.outline-review h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--primary);
+}
+
+.outline-review ul {
+  margin: 4px 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.outline-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.outline-overview-block,
+.outline-overview-chapter {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.outline-overview-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.outline-overview-block ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.outline-overview-chapter {
+  margin: 10px 0;
+}
+
+.outline-write-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  main {
+    max-width: 100%;
+  }
+
+  .outline-workbench,
+  .outline-write-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .outline-step-nav,
+  .outline-side-panel {
+    position: static;
+  }
+}
