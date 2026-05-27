@@ -5,28 +5,35 @@ DIMENSION_LIST = "、".join(DIMENSIONS)
 
 def daily_assignment_system() -> str:
     return (
-        "你是一位资深男频爽文写作教练，擅长为学员设计每日故事种子扩写训练。"
-        "你需要基于学员当前的薄弱维度设计一个适合扩写成 300~800 字连载章节片段的故事种子，"
-        "并让学员重点练习环境、动作、心理如何服务压迫、反击、爽点和追读。"
+        "你是一位资深男频爽文节奏教练，擅长把题材/场景改造成每日故事种子扩写训练。"
+        "训练目标固定为网文节奏：钩子立住、压迫推进、反击期待形成、爽点兑现、结尾留下追读。"
+        "你需要生成一个适合扩写成 300~800 字连载章节片段的故事种子。"
         "你必须严格只输出一个合法 JSON 对象。"
     )
 
 
-def daily_assignment_user(focus: str | None, recent_titles: list[str] | None = None) -> str:
-    focus_line = (
-        f"本次额外关注维度：{focus}。请让故事种子自然带出该维度的男频爽文练习空间，并把训练点写进 title。"
-        if focus
-        else "这是学员的首次男频爽文故事种子扩写练习，请综合考察各维度。"
+def daily_assignment_user(
+    focus: str | None,
+    recent_titles: list[str] | None = None,
+    intent: str | None = None,
+) -> str:
+    intent = (intent or "").strip()
+    intent_line = (
+        f"用户今天想用这个题材/场景练节奏：{intent}。请优先围绕它设计题面，但要改造成有网文节奏链的训练题。"
+        if intent
+        else "用户今天没有指定题材/场景，请你自动选择一个适合男频爽文节奏训练的题材。"
     )
     recent_block = ""
     if recent_titles:
         items = "\n".join(f"  - {t}" for t in recent_titles)
         recent_block = f"\n\n近期已出过的题目（请避免重复类似题材和场景）：\n{items}\n"
+    focus_line = f"系统建议训练核心：{focus or '节奏'}。"
     return f"""
 请设计一道男频爽文故事种子扩写题，学员目标扩写 300~800 字。
+{intent_line}
 {focus_line}{recent_block}
 
-可选维度共 7 个：{DIMENSION_LIST}。
+训练目标只有一个：节奏。节奏链包括：钩子 → 压迫推进 → 反击期待 → 爽点兑现 → 追读。
 请输出严格的 JSON，结构如下（不要 Markdown 代码块）：{{
   "title": "题目标题，简短一句话",
   "scenario": "20~60 字的一句话中文故事种子"
@@ -34,11 +41,11 @@ def daily_assignment_user(focus: str | None, recent_titles: list[str] | None = N
 
 约束：
 - scenario 必须是一句可扩写的核心情境，包含主角处境、欲望、压迫/羞辱/危机、可反击空间、转折或悬念中的至少三项。
-- 要优先设计适合连载章节的强情节题，能制造开篇钩子、反击期待、爽点预期和追读欲。
+- 题面必须天然适合练节奏：开头有钩子，中段有压迫，主角有反击期待，结尾能导向爽点或追读。
 - 题材可在都市、玄幻、修仙、末世、异能、学院、宗门等男频爽文场景中变化，但不要写成纯文艺氛围题。
 - 不要写完整梗概，不要写结局，不要替学员把故事讲完。
-- 故事种子要适合练环境、动作、心理，让学员能扩写成一场有压迫、选择、反击或尾钩的完整小说片段。
-- 标题要尽量具体，让学员一眼知道今天练什么。
+- 文笔、人物、场景、细节都只作为服务节奏的手段，不要把题面设计成传统作文题。
+- 标题要尽量具体，让学员一眼知道今天用什么题材/场景练节奏。
 """.strip()
 
 
@@ -65,7 +72,7 @@ def outline_practice_user(focus: str | None, recent_titles: list[str] | None = N
 请设计一道男频爽文章节小纲练习，题面只包含标题和简短冲突引子，训练目标是故事结构、冲突设计、反击爽点和尾钩。
 {focus_line}{recent_block}
 
-可选维度共 7 个：{DIMENSION_LIST}。
+可选维度：{DIMENSION_LIST}。
 请输出严格的 JSON，结构如下（不要 Markdown 代码块）：{{
   "title": "题目标题，简短一句话",
   "scenario": "20~80 字的中文冲突引子或故事设定"
@@ -103,7 +110,7 @@ def image_practice_user(focus: str | None, recent_titles: list[str] | None = Non
 请设计一道男频爽文看图写作题，目标字数 500 字以上。
 {focus_line}{recent_block}
 
-可选维度共 7 个：{DIMENSION_LIST}。
+可选维度：{DIMENSION_LIST}。
 请输出严格的 JSON，结构如下（不要 Markdown 代码块）：{{
   "title": "题目标题，简短一句话",
   "imagePrompt": "用于图片生成的英文描述，要具体、有画面感、镜头感"
@@ -134,14 +141,11 @@ def scenario_fallback_user(title: str, image_prompt: str) -> str:
 
 def scoring_system() -> str:
     return (
-        "你是一位偏严格的男频爽文训练编辑兼责编，需要根据 7 个维度对学员的作品进行 1~10 分整数评分，"
-        "并给出每个维度的优点、不足、建议。评分重点是开篇钩子、主角目标、压迫感、反击爽点、升级感、"
-        "信息释放、节奏密度、尾钩和追读欲。要求评分客观、点评具体，避免空话套话。"
-        "七维度是诊断项，不是同权总分；总评必须按商业追读优先级加权：追读欲 / 尾钩：20%，"
-        "爽点完成度：20%，压迫与反击：20%，节奏密度：15%，主角目标与行动力：10%，"
-        "信息释放：10%，文采与细节：5%。"
+        "你是一位偏严格的男频爽文节奏教练兼责编，只围绕一个核心给分：网文节奏。"
+        "节奏指读者是否被钩子抓住、被压迫推着往前读、等待主角反击、吃到爽点，并在结尾想继续看。"
+        "文笔、人物、场景、细节都不是独立评分项，只评价它们是否服务节奏。"
         "不默认高分，不硬夸，不为了鼓励而回避问题；普通完成不应轻易给 8 分以上，"
-        "明显影响追读的问题必须明确扣分到 6 分或以下。"
+        "钩子弱、压迫断、反击期待不足、爽点没兑现或结尾没有追读时，必须明确扣分。"
         "你必须严格只输出一个合法 JSON 对象。"
     )
 
@@ -155,25 +159,20 @@ def scoring_user(assignment: dict, content: str) -> str:
     title_block = f"题目标题：{a_title}"
     if a_type == "daily" and a_scenario:
         prompt_block = (
-            "题目类型：男频爽文故事种子扩写（目标 300~800 字，重点看环境、动作、心理是否支撑压迫、反击、爽点和尾钩）\n"
+            "题目类型：男频爽文节奏训练（目标 300~800 字，重点看钩子、压迫推进、反击期待、爽点兑现和追读）\n"
             f"故事种子：{a_scenario}"
         )
     elif a_type == "outline_practice" and a_scenario:
         prompt_block = (
-            "题目类型：男频爽文章节小纲练习（学员根据标题和冲突引子写 100~200 字故事小纲，重点看目标、阻碍、反击、爽点、升级和尾钩）\n"
+            "题目类型：男频爽文章节小纲练习（学员根据标题和冲突引子写 100~200 字故事小纲，"
+            "重点看目标、阻碍、反击、爽点、升级和尾钩）\n"
             f"冲突引子：{a_scenario}"
         )
     elif a_type == "image_practice":
         prompt_block = "题目类型：男频爽文看图写作"
     else:
         prompt_block = "题目类型：自由写作"
-    focus_block = f"本次重点训练维度：{focus}" if focus else "本次为综合训练"
-
-    example_scores = [6, 5, 5, 6, 5, 5, 5]
-    dim_schema = ",\n    ".join([f'"{d}": {example_scores[i]}' for i, d in enumerate(DIMENSIONS)])
-    feedback_schema = ",\n    ".join(
-        [f'"{d}": {{"优点": "...", "不足": "...", "建议": "..."}}' for d in DIMENSIONS]
-    )
+    focus_block = f"本次训练核心：{focus}" if focus else "本次训练核心：节奏"
 
     return f"""
 {title_block}
@@ -185,41 +184,34 @@ def scoring_user(assignment: dict, content: str) -> str:
 {content}
 >>>
 
-请对作品打分并给出点评。严格输出 JSON：{{
+请只围绕网文节奏评分并给出诊断。严格输出 JSON：{{
+  "rhythm_score": 1,
   "market_score": 1,
   "training_score": 1,
-  "fatal_problem": "本篇最影响追读/爽感的一个问题",
+  "fatal_problem": "本篇最影响节奏/追读/爽感的一个问题",
   "best_part": "本篇最值得保留或扩写的一处",
   "rewrite_task": {{
     "target": "重写哪一段",
-    "requirement": "下一稿必须加入或强化什么",
+    "requirement": "下一稿必须加入、延后、删去或强化什么",
     "word_limit": "300字以内"
   }},
-  "scores": {{
-    {dim_schema}
-  }},
-  "feedback": {{
-    {feedback_schema}
+  "rhythm_checks": {{
+    "hook": {{"status": "成立/偏弱/缺失", "reason": "钩子是否立住的原因"}},
+    "pressure": {{"status": "成立/偏弱/缺失", "reason": "压迫是否推进的原因"}},
+    "counter_expectation": {{"status": "成立/偏弱/缺失", "reason": "反击期待是否形成的原因"}},
+    "payoff": {{"status": "成立/偏弱/缺失", "reason": "爽点是否兑现的原因"}},
+    "follow_through": {{"status": "成立/偏弱/缺失", "reason": "结尾是否留下追读的原因"}}
   }},
   "overall": "整体一段话点评"
 }}
 
 要求：
-- market_score 按男频市场连载追读标准打分，核心看读者想不想看下一章，不要被文采掩盖；
-- training_score 按新人练习完成度打分，允许承认训练目标完成但市场追读仍弱，这两个分数必须分开；
-- 七维 scores 是诊断项，不要同权平均成总评；总评权重必须按：追读欲 / 尾钩：20%，爽点完成度：20%，压迫与反击：20%，节奏密度：15%，主角目标与行动力：10%，信息释放：10%，文采与细节：5%；
-- fatal_problem 必须只指出一个最致命问题，优先选择最影响追读、爽感或下一章期待的问题；
-- best_part 必须指出文本中最值得保留或扩写的一处，没有明显亮点时写“暂未形成稳定亮点”；
-- rewrite_task 必须可执行：target 写重写哪一段，requirement 写必须加入哪些冲突/动作/信息/台词，word_limit 固定写“300字以内”；
-- scores 中每个值必须是 1~10 的整数；
-- feedback 每个维度都要有具体优点、不足、可操作的建议；“优点”必须基于文本证据，没有明显亮点时可以写“基本完成但亮点不足”；
-- “不足”必须指出会让男频爽文读者流失、跳读或不追更的具体原因，“建议”必须是下一稿能直接执行的改法；
-- 人物塑造看主角欲望、压迫处境、行动力和辨识度；对话描写看冲突、试探、压迫、反击，而不是闲聊；
-- 场景描写看是否服务危机、奇观、资源和爽点；叙事结构看章节推进、反转、爽点兑现和尾钩；
-- 情感表达看羞辱、愤怒、不甘、热血、复仇期待是否有效；语言文采看清晰、利落、节奏快，不追求散文腔；
-- 细节描写看道具、身份、规则、战力/资源信息是否能制造期待；
-- 如果是故事种子扩写，请特别评价环境、动作、心理是否把种子扩成了有效男频爽文场景；
-- 如果是故事小纲练习，请特别评价叙事结构、冲突强度、反击爽点、升级空间和可扩写性；
-- 不默认高分，不硬夸，普通完成不应轻易给 8 分以上；明显削弱追读欲的问题必须明确扣分；
-- overall 不超过 200 字，要总结最影响追读的一两个问题，并给出下一稿优先修改方向。
+- rhythm_score 是唯一主分，1~10 整数；不要再输出人物、对话、场景、文采等独立维度分。
+- rhythm_score 重点看“钩子 → 压迫推进 → 反击期待 → 爽点兑现 → 追读”是否连成一条阅读链。
+- market_score 按男频连载读者是否想继续看打分；training_score 按新手是否完成本次节奏训练打分。
+- rhythm_checks 的 status 只能是“成立”“偏弱”“缺失”之一，每个 reason 必须具体指出文本证据或缺口。
+- 文笔、人物、场景、细节只作为节奏是否成立的原因来点评，不作为独立评分项。
+- fatal_problem 只指出一个最影响节奏的问题；rewrite_task 必须可执行。
+- 普通完成不应轻易给 8 分以上；钩子弱、压迫断、反击期待不足、爽点没兑现或结尾无追读时必须扣分。
+- overall 不超过 200 字，说明下一稿最优先怎么修节奏。
 """.strip()

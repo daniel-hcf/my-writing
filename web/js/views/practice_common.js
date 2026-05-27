@@ -1,5 +1,12 @@
-import { renderRadar } from "../charts.js";
 import { DIMENSIONS, el, scoreClass } from "../utils.js";
+
+const RHYTHM_CHECKS = [
+  ["hook", "钩子是否立住"],
+  ["pressure", "压迫是否推进"],
+  ["counterExpectation", "反击期待是否形成"],
+  ["payoff", "爽点是否兑现"],
+  ["followThrough", "结尾是否留下追读"],
+];
 
 export function buildTipsPanel(focusDimension, tips) {
   return el("div", { class: "tips-panel" }, [
@@ -32,6 +39,23 @@ export function renderMarketSignals(result) {
     }
   }
   return items.length ? el("div", { class: "feedback-block", style: "margin-top:12px;" }, items) : null;
+}
+
+function renderRhythmChecks(result) {
+  const checks = result.rhythmChecks || {};
+  return el("div", { class: "card" }, [
+    el("h2", {}, "节奏链诊断"),
+    ...RHYTHM_CHECKS.map(([key, label]) => {
+      const item = checks[key] || {};
+      return el("div", { class: "feedback-block", style: "margin-bottom:8px;" }, [
+        el("div", {}, [
+          el("span", { class: "label" }, `${label}：`),
+          item.status || "—",
+        ]),
+        item.reason ? el("div", { class: "muted" }, item.reason) : null,
+      ]);
+    }),
+  ]);
 }
 
 export function renderScoredResult(root, assignment, result, footerActions = []) {
@@ -67,15 +91,9 @@ export function renderScoredResult(root, assignment, result, footerActions = [])
   }
   root.appendChild(scoresCard);
 
-  const radarCard = el("div", { class: "card" }, [el("h2", {}, "本次维度雷达图")]);
-  const wrap = el("div", { class: "chart-wrap" });
-  const canvas = el("canvas");
-  wrap.appendChild(canvas);
-  radarCard.appendChild(wrap);
-  root.appendChild(radarCard);
-  setTimeout(() => renderRadar(canvas, result.scores, null), 0);
+  root.appendChild(renderRhythmChecks(result));
 
-  const fbCard = el("div", { class: "card" }, [el("h2", {}, "维度点评")]);
+  const fbCard = el("div", { class: "card" }, [el("h2", {}, "节奏点评")]);
   for (const dim of DIMENSIONS) {
     const feedback = result.feedback?.[dim] || {};
     fbCard.appendChild(el("details", { class: "dim-detail" }, [

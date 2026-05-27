@@ -24,6 +24,10 @@ class AssignmentDraftUpdate(BaseModel):
     content: str = ""
 
 
+class DailyAssignmentGenerateRequest(BaseModel):
+    intent: str = ""
+
+
 class OutlineProjectCreate(BaseModel):
     title: str = Field(min_length=1)
     genre: str = ""

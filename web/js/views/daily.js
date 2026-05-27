@@ -6,12 +6,12 @@ import { buildTipsPanel, renderScoredResult } from "./practice_common.js";
 const MIN = 300;
 const TARGET = "300~800";
 const STORY_SEED_TIPS = {
-  focus: "把一句故事种子扩写成一场完整小说片段，优先让环境、动作和心理推动情绪变化。",
+  focus: "把一句故事种子扩写成一场有钩子、有压迫、有反击期待、有爽点兑现和追读余味的小说片段。",
   skills: [
-    "先确定主角此刻想要什么，再让环境或他人的动作形成阻碍。",
-    "环境描写不要停在布景，要和主角的心理互相映照。",
-    "用动作承载犹豫、逃避、靠近或爆发，少直接解释情绪。",
-    "结尾留一个变化：信息改变、关系改变，或主角心态改变。",
+    "开头先给读者一个必须继续看的钩子：身份落差、危机、羞辱、资源诱惑或规则异变。",
+    "中段让压迫持续推进，不要让主角太早脱困，也不要只停在解释设定。",
+    "反击前先铺出读者期待，让主角有可见的筹码、判断或隐忍。",
+    "结尾兑现一个爽点后，再留一个新变化或新威胁制造追读。",
   ],
 };
 
@@ -29,11 +29,57 @@ export async function renderDaily(root, ctx) {
     return;
   }
 
-  if (assignment.submission) {
+  if (assignment.needsGeneration) {
+    renderGenerationPrompt(root, ctx);
+  } else if (assignment.submission) {
     renderResult(root, ctx, assignment, assignment.submission);
   } else {
     renderAssignment(root, ctx, assignment);
   }
+}
+
+function renderGenerationPrompt(root, ctx) {
+  root.innerHTML = "";
+
+  const input = el("input", {
+    type: "text",
+    placeholder: "退婚流、宗门审判、都市打脸、末世抢物资",
+    style: "min-width: min(100%, 420px);",
+  });
+  const generateBtn = el("button", { class: "btn" }, "生成节奏题");
+  const skipBtn = el("button", { class: "btn secondary" }, "随机题材");
+
+  const generate = async (useInput = true) => {
+    const intent = useInput ? input.value.trim() : "";
+    generateBtn.disabled = true;
+    skipBtn.disabled = true;
+    generateBtn.textContent = "正在生成...";
+    try {
+      const next = await api.newAssignment(intent);
+      renderAssignment(root, ctx, next);
+    } catch (e) {
+      showToast(`生成题目失败：${e.message}`, "error");
+      generateBtn.disabled = false;
+      skipBtn.disabled = false;
+      generateBtn.textContent = "生成节奏题";
+    }
+  };
+
+  generateBtn.addEventListener("click", () => generate(true));
+  skipBtn.addEventListener("click", () => generate(false));
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") generate(true);
+  });
+
+  root.appendChild(el("div", { class: "card" }, [
+    el("h2", {}, "每日主练"),
+    el("p", { class: "muted" }, "今天想用什么题材/场景练节奏？"),
+    input,
+    el("div", { class: "row", style: "margin-top:12px;" }, [
+      generateBtn,
+      skipBtn,
+    ]),
+  ]));
 }
 
 function renderAssignment(root, ctx, assignment) {
@@ -46,16 +92,7 @@ function renderAssignment(root, ctx, assignment) {
   const changeBtn = el("button", { class: "btn secondary btn-sm" }, "换一题");
   changeBtn.addEventListener("click", async () => {
     if (!confirmDiscardDraft(assignment, textarea)) return;
-    changeBtn.disabled = true;
-    changeBtn.textContent = "生成中...";
-    try {
-      const next = await api.newAssignment();
-      renderAssignment(root, ctx, next);
-    } catch (e) {
-      showToast(`换题失败：${e.message}`, "error");
-      changeBtn.disabled = false;
-      changeBtn.textContent = "换一题";
-    }
+    renderGenerationPrompt(root, ctx);
   });
 
   const card = el("div", { class: "card" }, [
@@ -144,19 +181,8 @@ function renderResult(root, ctx, assignment, result) {
     }
   });
 
-  const newPromptBtn = el("button", { class: "btn secondary" }, "换一题再写");
-  newPromptBtn.addEventListener("click", async () => {
-    newPromptBtn.disabled = true;
-    newPromptBtn.textContent = "正在生成...";
-    try {
-      const next = await api.newAssignment();
-      renderAssignment(root, ctx, next);
-    } catch (e) {
-      showToast(`生成题目失败：${e.message}`, "error");
-      newPromptBtn.disabled = false;
-      newPromptBtn.textContent = "换一题再写";
-    }
-  });
+  const newPromptBtn = el("button", { class: "btn secondary" }, "换题材再练节奏");
+  newPromptBtn.addEventListener("click", () => renderGenerationPrompt(root, ctx));
 
   renderScoredResult(root, assignment, result, [
     repeatBtn,

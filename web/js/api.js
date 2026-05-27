@@ -44,7 +44,7 @@ export const api = {
   testProvider: (target) => request("POST", "/api/ai/test", { target }),
 
   getTodayAssignment: () => request("GET", "/api/assignments/today"),
-  newAssignment: () => request("POST", "/api/assignments/new"),
+  newAssignment: (intent = "") => request("POST", "/api/assignments/new", { intent }),
   repeatDailyAssignment: (assignmentId) => request("POST", `/api/assignments/${assignmentId}/repeat`),
   getTodayImagePractice: () => request("GET", "/api/assignments/image-practice/today"),
   newImagePractice: () => request("POST", "/api/assignments/image-practice/new"),

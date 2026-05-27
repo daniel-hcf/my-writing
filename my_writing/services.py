@@ -152,11 +152,12 @@ async def generate_daily_assignment(
     focus: str | None,
     cfg: FullConfig,
     recent_titles: list[str] | None = None,
+    intent: str | None = None,
 ) -> dict:
     text_provider = get_text_provider(cfg.text)
     raw = await text_provider.chat(
         prompts.daily_assignment_system(),
-        prompts.daily_assignment_user(focus, recent_titles),
+        prompts.daily_assignment_user(focus, recent_titles, intent),
     )
     data = parse_json_loose(raw)
     title = (data.get("title") or "").strip() or "今日故事种子"
@@ -429,11 +430,12 @@ async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
     if not row:
         row = get_assignment_by_date(today, mode_filter=MODE_DAILY)
     if not row:
-        focus = latest_weakest_dimension()
-        recent = recent_assignment_titles(MODE_DAILY)
-        data = await generate_daily_assignment(focus, cfg, recent)
-        aid = insert_assignment(data, today)
-        row = get_assignment_by_id(aid)
+        return {
+            "type": MODE_DAILY,
+            "date": today,
+            "needsGeneration": True,
+            "suggestedDimension": latest_weakest_dimension() or "节奏",
+        }
     result = assignment_row_to_dict(row)
     sub = get_submission_by_assignment(row["id"])
     if sub:
@@ -443,12 +445,12 @@ async def get_or_create_today_assignment(cfg: FullConfig) -> dict:
     return result
 
 
-async def replace_today_daily_assignment(cfg: FullConfig) -> dict:
+async def replace_today_daily_assignment(cfg: FullConfig, intent: str | None = None) -> dict:
     today = datetime.now().strftime("%Y-%m-%d")
     delete_unsubmitted_assignments(today, MODE_DAILY)
     focus = latest_weakest_dimension()
     recent = recent_assignment_titles(MODE_DAILY)
-    data = await generate_daily_assignment(focus, cfg, recent)
+    data = await generate_daily_assignment(focus, cfg, recent, intent)
     aid = insert_assignment(data, today)
     return attach_assignment_draft(assignment_row_to_dict(get_assignment_by_id(aid)), aid)
 
@@ -565,6 +567,42 @@ def _rewrite_task_to_dict(raw: object) -> dict:
     }
 
 
+RHYTHM_CHECKS = {
+    "hook": ("hook", "钩子是否立住"),
+    "pressure": ("pressure", "压迫是否推进"),
+    "counter_expectation": ("counterExpectation", "反击期待是否形成"),
+    "counterExpectation": ("counterExpectation", "反击期待是否形成"),
+    "payoff": ("payoff", "爽点是否兑现"),
+    "follow_through": ("followThrough", "结尾是否留下追读"),
+    "followThrough": ("followThrough", "结尾是否留下追读"),
+}
+
+
+def _rhythm_checks_to_dict(raw: object) -> dict:
+    if not isinstance(raw, dict):
+        raw = {}
+    out = {
+        "hook": {"label": "钩子是否立住", "status": "缺失", "reason": ""},
+        "pressure": {"label": "压迫是否推进", "status": "缺失", "reason": ""},
+        "counterExpectation": {"label": "反击期待是否形成", "status": "缺失", "reason": ""},
+        "payoff": {"label": "爽点是否兑现", "status": "缺失", "reason": ""},
+        "followThrough": {"label": "结尾是否留下追读", "status": "缺失", "reason": ""},
+    }
+    for raw_key, (key, label) in RHYTHM_CHECKS.items():
+        item = raw.get(raw_key)
+        if not isinstance(item, dict):
+            continue
+        status = (item.get("status") or "").strip()
+        if status not in {"成立", "偏弱", "缺失"}:
+            status = "缺失"
+        out[key] = {
+            "label": label,
+            "status": status,
+            "reason": (item.get("reason") or "").strip(),
+        }
+    return out
+
+
 async def score_submission(assignment_id: int, content: str, cfg: FullConfig) -> dict:
     row = get_assignment_by_id(assignment_id)
     if row is None:
@@ -594,11 +632,16 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
     fatal_problem = (data.get("fatal_problem") or data.get("fatalProblem") or "").strip()
     best_part = (data.get("best_part") or data.get("bestPart") or "").strip()
     rewrite_task = _rewrite_task_to_dict(data.get("rewrite_task") or data.get("rewriteTask"))
+    rhythm_score = _clamped_score(
+        data.get("rhythm_score")
+        or data.get("rhythmScore")
+        or scores_raw.get("节奏")
+    )
+    rhythm_checks = _rhythm_checks_to_dict(data.get("rhythm_checks") or data.get("rhythmChecks"))
 
-    scores: dict[str, int] = {}
+    scores: dict[str, int] = {"节奏": rhythm_score}
     feedback: dict[str, dict] = {}
     for dim in DIMENSIONS:
-        scores[dim] = _clamped_score(scores_raw.get(dim, 5))
         dim_feedback = feedback_raw.get(dim) or {}
         feedback[dim] = {
             "优点": (dim_feedback.get("优点") or "").strip(),
@@ -629,6 +672,7 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
                         "fatalProblem": fatal_problem,
                         "bestPart": best_part,
                         "rewriteTask": rewrite_task,
+                        "rhythmChecks": rhythm_checks,
                     },
                     ensure_ascii=False,
                 ),
@@ -650,6 +694,7 @@ async def score_submission(assignment_id: int, content: str, cfg: FullConfig) ->
         "fatalProblem": fatal_problem,
         "bestPart": best_part,
         "rewriteTask": rewrite_task,
+        "rhythmChecks": rhythm_checks,
     }
 
 
@@ -663,6 +708,7 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
         fatal_problem = feedback_raw.get("fatalProblem", "")
         best_part = feedback_raw.get("bestPart", "")
         rewrite_task = feedback_raw.get("rewriteTask", {})
+        rhythm_checks = feedback_raw.get("rhythmChecks", {})
     else:
         feedback = feedback_raw
         overall = ""
@@ -671,6 +717,7 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
         fatal_problem = ""
         best_part = ""
         rewrite_task = {}
+        rhythm_checks = {}
     return {
         "id": row["id"],
         "assignmentId": row["assignment_id"],
@@ -685,21 +732,13 @@ def submission_row_to_dict(row: sqlite3.Row) -> dict:
         "fatalProblem": fatal_problem,
         "bestPart": best_part,
         "rewriteTask": rewrite_task,
+        "rhythmChecks": rhythm_checks,
         "createdAt": row["created_at"],
     }
 
 
 async def pre_generate_tomorrow(cfg: FullConfig) -> None:
-    target = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    if get_assignment_by_date(target, mode_filter=MODE_DAILY):
-        return
-    try:
-        focus = latest_weakest_dimension()
-        recent = recent_assignment_titles(MODE_DAILY)
-        data = await generate_daily_assignment(focus, cfg, recent)
-        insert_assignment(data, target)
-    except Exception as exc:
-        log.warning("预生成明日作业失败：%s", exc)
+    return None
 
 
 def collect_stats(mode: str = "all") -> dict:
@@ -728,6 +767,8 @@ def collect_stats(mode: str = "all") -> dict:
         try:
             scores = json.loads(row["scores"])
         except json.JSONDecodeError:
+            continue
+        if not any(dim in scores for dim in DIMENSIONS):
             continue
         series.append({"date": row["date"], "scores": scores})
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from cryptography.fernet import Fernet
 
-from my_writing import db, prompts, services
+from my_writing import config, db, prompts, services
 from my_writing.db import connect, init_db
 from my_writing.models import FullConfig, ProviderConfig
 from my_writing.providers import openai_provider
@@ -126,18 +126,21 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "assignment_already_submitted"):
             services.save_assignment_draft(aid, "late draft")
 
-    def test_daily_prompt_targets_story_seed_expansion(self):
-        user_prompt = prompts.daily_assignment_user("场景描写")
+    def test_daily_prompt_targets_rhythm_with_user_scene_intent(self):
+        self.assertEqual(config.DIMENSIONS, ["节奏"])
+        user_prompt = prompts.daily_assignment_user("节奏", intent="宗门审判")
 
         self.assertIn("故事种子", user_prompt)
         self.assertIn("男频爽文", user_prompt)
-        self.assertIn("爽点", user_prompt)
+        self.assertIn("题材/场景", user_prompt)
+        self.assertIn("宗门审判", user_prompt)
+        self.assertIn("钩子", user_prompt)
         self.assertIn("压迫", user_prompt)
-        self.assertIn("反击", user_prompt)
+        self.assertIn("反击期待", user_prompt)
+        self.assertIn("爽点兑现", user_prompt)
         self.assertIn("追读", user_prompt)
         self.assertIn("300~800", user_prompt)
         self.assertIn("20~60", user_prompt)
-        self.assertIn("环境、动作、心理", user_prompt)
         self.assertIn('"scenario"', user_prompt)
 
     def test_outline_prompt_targets_structure_and_conflict(self):
@@ -173,54 +176,53 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         user_prompt = prompts.scoring_user(
             {
                 "type": "daily",
-                "title": "退婚当天",
+                "title": "宗门审判",
                 "scenario": "众人逼主角交出祖传玉牌时，他听见玉牌里传来师尊的声音。",
-                "focus_dimension": "叙事结构",
+                "focus_dimension": "节奏",
             },
             "x" * 320,
         )
         combined = system_prompt + "\n" + user_prompt
 
-        for word in ("男频爽文", "责编", "开篇钩子", "压迫感", "反击爽点", "升级感", "尾钩", "追读欲"):
+        for word in ("男频爽文", "责编", "网文节奏", "钩子", "压迫", "反击期待", "爽点兑现", "追读"):
             self.assertIn(word, combined)
-        for word in ("追读欲 / 尾钩：20%", "爽点完成度：20%", "压迫与反击：20%", "市场连载追读标准"):
-            self.assertIn(word, combined)
-        for field in ("market_score", "training_score", "fatal_problem", "best_part", "rewrite_task"):
+        for field in ("rhythm_score", "market_score", "training_score", "fatal_problem", "best_part", "rewrite_task", "rhythm_checks"):
             self.assertIn(f'"{field}"', user_prompt)
-        for word in ("不默认高分", "不硬夸", "普通完成不应轻易给 8 分以上"):
+        for word in ("不默认高分", "不硬夸", "普通完成不应轻易给 8 分以上", "不要再输出人物、对话、场景、文采等独立维度分"):
             self.assertIn(word, combined)
-        for dim in prompts.DIMENSIONS:
-            self.assertIn(f'"{dim}"', user_prompt)
-        self.assertNotIn(f'"{prompts.DIMENSIONS[0]}": 8', user_prompt)
+        for key in ("hook", "pressure", "counter_expectation", "payoff", "follow_through"):
+            self.assertIn(f'"{key}"', user_prompt)
 
-    async def test_get_or_create_today_assignment_returns_daily_and_reuses_it(self):
+    async def test_get_today_assignment_without_existing_daily_prompts_generation(self):
         generator = getattr(services, "generate_daily_assignment", None)
         self.assertIsNotNone(generator)
         if generator is None:
             return
 
-        with patch.object(
-            services,
-            "generate_daily_assignment",
-            AsyncMock(
-                return_value={
-                    "type": "daily",
-                    "title": "today daily",
-                    "scenario": "write from a scene",
-                    "image_data": None,
-                    "focus_dimension": "叙事结构",
-                }
-            ),
-        ) as gen:
-            first = await services.get_or_create_today_assignment(self.cfg)
-            second = await services.get_or_create_today_assignment(self.cfg)
+        with patch.object(services, "generate_daily_assignment", AsyncMock()) as gen:
+            result = await services.get_or_create_today_assignment(self.cfg)
 
-        self.assertEqual(first["type"], "daily")
-        self.assertEqual(first["id"], second["id"])
-        self.assertEqual(gen.await_count, 1)
+        self.assertEqual(result["type"], "daily")
+        self.assertTrue(result["needsGeneration"])
+        self.assertEqual(result["date"], datetime.now().strftime("%Y-%m-%d"))
+        self.assertIn("suggestedDimension", result)
+        self.assertEqual(gen.await_count, 0)
 
-        services.save_assignment_draft(first["id"], "saved daily draft")
+    async def test_get_today_assignment_reuses_existing_daily_draft(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "today daily", "write from a scene", None, "节奏", f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        services.save_assignment_draft(aid, "saved daily draft")
         restored = await services.get_or_create_today_assignment(self.cfg)
+        self.assertEqual(restored["id"], aid)
         self.assertEqual(restored["draftContent"], "saved daily draft")
         self.assertEqual(restored["draftCharCount"], len("saved daily draft"))
 
@@ -258,7 +260,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("submission", result)
         self.assertEqual(result["draftContent"], "")
 
-    async def test_replace_today_daily_assignment_allows_new_after_submission(self):
+    async def test_replace_today_daily_assignment_allows_new_after_submission_and_accepts_intent(self):
         today = datetime.now().strftime("%Y-%m-%d")
         with connect() as conn:
             conn.execute(
@@ -291,11 +293,12 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
                 }
             ),
         ) as gen:
-            result = await services.replace_today_daily_assignment(self.cfg)
+            result = await services.replace_today_daily_assignment(self.cfg, intent="退婚流")
 
         self.assertNotEqual(result["id"], submitted_id)
         self.assertEqual(result["title"], "new daily")
         self.assertEqual(gen.await_count, 1)
+        self.assertEqual(gen.await_args.args[3], "退婚流")
 
     def test_repeat_daily_assignment_copies_prompt_for_today(self):
         source_date = "2026-04-29"
@@ -525,6 +528,56 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored["fatalProblem"], "主角没有主动反击，追读欲断掉")
         self.assertEqual(restored["rewriteTask"]["requirement"], "加入群嘲、主角一句反问、长老一句判死刑式压制、血滴石碑的停顿")
 
+    async def test_score_submission_preserves_rhythm_score_and_checkpoints(self):
+        today = datetime.now().strftime("%Y-%m-%d")
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO assignments (date, type, title, scenario, image_data, focus_dimension, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (today, "daily", "rhythm metadata", "seed", None, "节奏", f"{today}T00:00:00"),
+            )
+            aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+        fake_provider = AsyncMock()
+        fake_provider.chat = AsyncMock(
+            return_value="""
+            {
+              "rhythm_score": 7,
+              "market_score": 6,
+              "training_score": 7,
+              "fatal_problem": "爽点兑现太早，结尾没有追读钩子",
+              "best_part": "宗门审判开场的压迫成立",
+              "rewrite_task": {
+                "target": "结尾反击段",
+                "requirement": "把真正身份揭露延后，只先让审判长脸色变化",
+                "word_limit": "300字以内"
+              },
+              "rhythm_checks": {
+                "hook": {"status": "成立", "reason": "开场有明确审判危机"},
+                "pressure": {"status": "成立", "reason": "长老和同门持续施压"},
+                "counter_expectation": {"status": "偏弱", "reason": "主角可反击资源铺垫不足"},
+                "payoff": {"status": "偏弱", "reason": "反击结果来得太快"},
+                "follow_through": {"status": "缺失", "reason": "结尾没有新悬念"}
+              },
+              "overall": "节奏链前半段成立，后半段泄力。"
+            }
+            """
+        )
+        with patch.object(services, "get_text_provider", return_value=fake_provider):
+            result = await services.score_submission(aid, "x" * 320, self.cfg)
+
+        self.assertEqual(result["scores"], {"节奏": 7})
+        self.assertEqual(result["rhythmChecks"]["hook"]["status"], "成立")
+        self.assertEqual(result["rhythmChecks"]["followThrough"]["status"], "缺失")
+
+        with connect() as conn:
+            row = conn.execute("SELECT * FROM submissions WHERE assignment_id = ?", (aid,)).fetchone()
+        restored = services.submission_row_to_dict(row)
+        self.assertEqual(restored["scores"], {"节奏": 7})
+        self.assertEqual(restored["rhythmChecks"]["payoff"]["status"], "偏弱")
+
     async def test_outline_practice_waits_until_three_days_after_completion(self):
         today = datetime.now().strftime("%Y-%m-%d")
         with connect() as conn:
@@ -611,7 +664,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
                   (assignment_id, date, content, char_count, scores, feedback, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (daily_id, "2026-04-29", "daily text", 500, '{"人物塑造": 8}', '{"dims": {}, "overall": ""}', "2026-04-29T00:00:00"),
+                (daily_id, "2026-04-29", "daily text", 500, '{"节奏": 8}', '{"dims": {}, "overall": ""}', "2026-04-29T00:00:00"),
             )
             conn.execute(
                 """
@@ -619,7 +672,7 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
                   (assignment_id, date, content, char_count, scores, feedback, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (image_id, "2026-04-29", "image text", 500, '{"人物塑造": 6}', '{"dims": {}, "overall": ""}', "2026-04-29T00:01:00"),
+                (image_id, "2026-04-29", "image text", 500, '{"节奏": 6}', '{"dims": {}, "overall": ""}', "2026-04-29T00:01:00"),
             )
 
         all_stats = services.collect_stats(mode="all")
@@ -629,8 +682,8 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(all_stats["series"]), 2)
         self.assertEqual(len(daily_stats["series"]), 1)
         self.assertEqual(len(image_stats["series"]), 1)
-        self.assertEqual(daily_stats["latest"]["人物塑造"], 8)
-        self.assertEqual(image_stats["latest"]["人物塑造"], 6)
+        self.assertEqual(daily_stats["latest"]["节奏"], 8)
+        self.assertEqual(image_stats["latest"]["节奏"], 6)
 
     def test_normalize_downloaded_image_mime_type(self):
         normalizer = getattr(openai_provider, "_normalize_image_content_type", None)

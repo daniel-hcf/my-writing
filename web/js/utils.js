@@ -1,11 +1,5 @@
 export const DIMENSIONS = [
-  "人物塑造",
-  "对话描写",
-  "场景描写",
-  "叙事结构",
-  "情感表达",
-  "语言文采",
-  "细节描写",
+  "节奏",
 ];
 
 export const MODE_LABELS = {

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
-from ..models import AssignmentDraftUpdate
+from ..models import AssignmentDraftUpdate, DailyAssignmentGenerateRequest
 from ..services import (
     assignment_row_to_dict,
     cleanup_orphan_assignments,
@@ -37,13 +37,13 @@ async def today():
 
 
 @router.post("/new")
-async def new_assignment():
+async def new_assignment(payload: DailyAssignmentGenerateRequest | None = None):
     cfg = load_full_config()
     if not is_text_configured(cfg):
         raise HTTPException(status_code=400, detail="文本模型未配置，请先到设置页填写。")
     try:
         cleanup_orphan_assignments()
-        return await replace_today_daily_assignment(cfg)
+        return await replace_today_daily_assignment(cfg, intent=payload.intent if payload else "")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
