@@ -126,22 +126,61 @@ class PracticeModesTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "assignment_already_submitted"):
             services.save_assignment_draft(aid, "late draft")
 
-    def test_daily_prompt_targets_rhythm_with_user_scene_intent(self):
+    def test_daily_prompt_targets_advanced_webnovel_rhythm_with_user_scene_intent(self):
         self.assertEqual(config.DIMENSIONS, ["节奏"])
-        user_prompt = prompts.daily_assignment_user("节奏", intent="宗门审判")
+        system_prompt = prompts.daily_assignment_system()
+        user_prompt = prompts.daily_assignment_user("节奏", intent="都市异能")
+        combined = system_prompt + "\n" + user_prompt
 
         self.assertIn("故事种子", user_prompt)
-        self.assertIn("男频爽文", user_prompt)
+        self.assertIn("男频网文", user_prompt)
         self.assertIn("题材/场景", user_prompt)
-        self.assertIn("宗门审判", user_prompt)
+        self.assertIn("都市异能", user_prompt)
         self.assertIn("钩子", user_prompt)
         self.assertIn("压迫", user_prompt)
         self.assertIn("反击期待", user_prompt)
         self.assertIn("爽点兑现", user_prompt)
         self.assertIn("追读", user_prompt)
+        self.assertIn("高级网文训练题", combined)
+        self.assertIn("信息差", user_prompt)
+        self.assertIn("规则漏洞", user_prompt)
+        self.assertIn("身份错位", user_prompt)
+        self.assertIn("局中局", user_prompt)
+        self.assertIn("不要靠低级套路制造刺激", user_prompt)
+        self.assertIn("废柴逆袭", user_prompt)
+        self.assertIn("隐藏S级实力", user_prompt)
+        self.assertIn("当众打脸", user_prompt)
+        self.assertIn("直播鉴定", user_prompt)
+        self.assertIn("反击入口", user_prompt)
+        self.assertIn("不要直接写出反击完成", user_prompt)
+        self.assertIn("不要直接写出爽点兑现", user_prompt)
+        self.assertIn("不要用说明书式口吻", user_prompt)
+        self.assertIn("正在发生的具体场景", user_prompt)
+        self.assertIn("通过主角的发现、选择或异常提示露出来", user_prompt)
+        self.assertIn("不要用“突然想起”“原来”“其实”“恰好发现”", user_prompt)
+        self.assertIn("物件、动作、系统提示、对话或现场异常触发", user_prompt)
+        self.assertIn("恰好、刚好、正好、突然、原来、其实", user_prompt)
+        self.assertIn("如果 scenario 中出现", user_prompt)
+        self.assertIn("请废弃并重新生成", user_prompt)
         self.assertIn("300~800", user_prompt)
         self.assertIn("20~60", user_prompt)
         self.assertIn('"scenario"', user_prompt)
+
+    async def test_daily_assignment_retries_when_seed_uses_author_arranged_coincidence(self):
+        fake_provider = AsyncMock()
+        fake_provider.chat = AsyncMock(
+            side_effect=[
+                '{"title":"坊市鉴定玉盘故障","scenario":"我拿着一品聚气散走进坊市鉴定处，玉盘显示三品归元丹，二楼主管恰好推门望来。"}',
+                '{"title":"坊市鉴定：玉盘认错的不是丹药","scenario":"我把一品聚气散放上玉盘，三品金纹亮起；二楼禁室警铃随即响起，主管盯着盘底旧族徽问丹从哪来。"}',
+            ]
+        )
+
+        with patch.object(services, "get_text_provider", return_value=fake_provider):
+            result = await services.generate_daily_assignment("节奏", self.cfg, intent="坊市鉴定")
+
+        self.assertEqual(result["title"], "坊市鉴定：玉盘认错的不是丹药")
+        self.assertNotIn("恰好", result["scenario"])
+        self.assertEqual(fake_provider.chat.await_count, 2)
 
     def test_outline_prompt_targets_structure_and_conflict(self):
         user_prompt = prompts.outline_practice_user("叙事结构")

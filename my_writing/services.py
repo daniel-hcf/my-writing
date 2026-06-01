@@ -20,6 +20,7 @@ MODE_JOURNAL = "journal"
 PRACTICE_MODES = (MODE_DAILY, MODE_IMAGE_PRACTICE, MODE_OUTLINE_PRACTICE)
 ALL_MODES = (*PRACTICE_MODES, MODE_JOURNAL)
 OUTLINE_INTERVAL_DAYS = 3
+DAILY_FORBIDDEN_AUTHOR_ARRANGEMENTS = ("恰好", "刚好", "正好", "突然想起", "原来", "其实")
 
 
 def _sql_placeholders(values: tuple[object, ...]) -> str:
@@ -69,6 +70,11 @@ def parse_json_loose(text: str) -> dict:
     if not match:
         raise ValueError("模型未返回 JSON")
     return json.loads(match.group(0))
+
+
+def _daily_seed_has_author_arranged_coincidence(title: str, scenario: str) -> bool:
+    text = f"{title}\n{scenario}"
+    return any(word in text for word in DAILY_FORBIDDEN_AUTHOR_ARRANGEMENTS)
 
 
 def latest_weakest_dimension() -> str | None:
@@ -155,13 +161,19 @@ async def generate_daily_assignment(
     intent: str | None = None,
 ) -> dict:
     text_provider = get_text_provider(cfg.text)
-    raw = await text_provider.chat(
-        prompts.daily_assignment_system(),
-        prompts.daily_assignment_user(focus, recent_titles, intent),
-    )
-    data = parse_json_loose(raw)
-    title = (data.get("title") or "").strip() or "今日故事种子"
-    scenario = (data.get("scenario") or "").strip() or "主角在一个熟悉的地方发现了不该出现的东西。"
+    system_prompt = prompts.daily_assignment_system()
+    user_prompt = prompts.daily_assignment_user(focus, recent_titles, intent)
+    title = "今日故事种子"
+    scenario = "主角在一个熟悉的地方发现了不该出现的东西。"
+    for attempt in range(2):
+        raw = await text_provider.chat(system_prompt, user_prompt)
+        data = parse_json_loose(raw)
+        title = (data.get("title") or "").strip() or "今日故事种子"
+        scenario = (data.get("scenario") or "").strip() or "主角在一个熟悉的地方发现了不该出现的东西。"
+        if not _daily_seed_has_author_arranged_coincidence(title, scenario):
+            break
+        if attempt == 0:
+            log.info("daily assignment seed used author-arranged coincidence; retrying generation")
     return {
         "type": MODE_DAILY,
         "title": title,

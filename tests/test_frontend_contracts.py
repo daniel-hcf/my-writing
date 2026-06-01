@@ -70,8 +70,9 @@ class FrontendContractsTest(unittest.TestCase):
     def test_daily_view_shows_scene_intent_generation_entry(self):
         source = (ROOT / "web" / "js" / "views" / "daily.js").read_text(encoding="utf-8")
 
-        self.assertIn("今天想用什么题材/场景练节奏？", source)
-        self.assertIn("退婚流、宗门审判、都市打脸、末世抢物资", source)
+        self.assertIn("今天想用什么题材/场景练高级网文节奏？", source)
+        self.assertIn("都市异能、修仙宗门、无限流副本、末世基地", source)
+        self.assertNotIn("退婚流、宗门审判、都市打脸、末世抢物资", source)
         self.assertIn("assignment.needsGeneration", source)
         self.assertIn("api.newAssignment(intent", source)
 

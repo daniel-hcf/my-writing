@@ -6,12 +6,12 @@ import { buildTipsPanel, renderScoredResult } from "./practice_common.js";
 const MIN = 300;
 const TARGET = "300~800";
 const STORY_SEED_TIPS = {
-  focus: "把一句故事种子扩写成一场有钩子、有压迫、有反击期待、有爽点兑现和追读余味的小说片段。",
+  focus: "把一句故事种子扩写成一场有钩子、有压迫、有高级爽点和追读余味的网文片段。",
   skills: [
-    "开头先给读者一个必须继续看的钩子：身份落差、危机、羞辱、资源诱惑或规则异变。",
+    "开头先给读者一个必须继续看的钩子：信息差、规则漏洞、身份错位、危机或资源诱惑。",
     "中段让压迫持续推进，不要让主角太早脱困，也不要只停在解释设定。",
-    "反击前先铺出读者期待，让主角有可见的筹码、判断或隐忍。",
-    "结尾兑现一个爽点后，再留一个新变化或新威胁制造追读。",
+    "反击前先铺出读者期待，让主角有可见的筹码、判断、误导或主动设局。",
+    "结尾兑现一个爽点后，再留一个局中局、新变化或新威胁制造追读。",
   ],
 };
 
@@ -43,7 +43,7 @@ function renderGenerationPrompt(root, ctx) {
 
   const input = el("input", {
     type: "text",
-    placeholder: "退婚流、宗门审判、都市打脸、末世抢物资",
+    placeholder: "都市异能、修仙宗门、无限流副本、末世基地",
     style: "min-width: min(100%, 420px);",
   });
   const generateBtn = el("button", { class: "btn" }, "生成节奏题");
@@ -73,7 +73,7 @@ function renderGenerationPrompt(root, ctx) {
 
   root.appendChild(el("div", { class: "card" }, [
     el("h2", {}, "每日主练"),
-    el("p", { class: "muted" }, "今天想用什么题材/场景练节奏？"),
+    el("p", { class: "muted" }, "今天想用什么题材/场景练高级网文节奏？"),
     input,
     el("div", { class: "row", style: "margin-top:12px;" }, [
       generateBtn,
