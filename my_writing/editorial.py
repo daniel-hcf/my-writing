@@ -7,7 +7,7 @@ import smtplib
 import threading
 import time
 import sqlite3
-from datetime import datetime
+from datetime import date as date_cls, datetime
 from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -30,6 +30,8 @@ CHANNEL_LABELS = {
     CHANNEL_STORY: "故事素材雷达",
 }
 MASK = "***"
+WORK_CYCLE_CONFIG_KEY = "editorial_work_cycle"
+WORK_CYCLE_DAYS = 3
 
 SOURCE_PACKS = [
     {
@@ -501,11 +503,81 @@ def _work_analysis_system_prompt() -> str:
     )
 
 
-def _work_analysis_user_prompt(date: str) -> str:
+def _work_day_focus(cycle_day: int) -> tuple[str, str]:
+    if cycle_day == 2:
+        return (
+            "套路提炼",
+            "今天重点拆它为什么让人继续看/玩下去：开局钩子、升级节奏、压迫来源、反转方式、爽点兑现和追读机制。",
+        )
+    if cycle_day == 3:
+        return (
+            "改写练习",
+            "今天重点把这部作品的核心机制迁移成网文练习：给出可直接开写的题材迁移、限制条件和开场任务。",
+        )
+    return (
+        "作品总拆解",
+        "今天重点做全局拆解：剧情梗概、主角团、反派团、技能机制、金手指、核心爽点和可复用结构。",
+    )
+
+
+def _work_cycle_for_date(date: str) -> tuple[int, dict | None]:
+    cycle = get_config(WORK_CYCLE_CONFIG_KEY) or {}
+    work = cycle.get("work") if isinstance(cycle.get("work"), dict) else None
+    start_date = cycle.get("startDate")
+    if not start_date or not work or not work.get("title"):
+        return 1, None
+    try:
+        delta = (date_cls.fromisoformat(date) - date_cls.fromisoformat(start_date)).days
+    except ValueError:
+        return 1, None
+    if 0 <= delta < WORK_CYCLE_DAYS:
+        return delta + 1, work
+    return 1, None
+
+
+def _save_work_cycle(date: str, brief: dict, cycle_day: int, cycle_work: dict | None) -> None:
+    if cycle_day != 1 and cycle_work:
+        return
+    work = brief.get("work") or {}
+    if not work.get("title"):
+        return
+    set_config(
+        WORK_CYCLE_CONFIG_KEY,
+        {
+            "startDate": date,
+            "work": {
+                "title": work.get("title") or "",
+                "sourceType": work.get("sourceType") or "",
+                "genre": work.get("genre") or "",
+                "plotSummary": work.get("plotSummary") or "",
+                "protagonistTeam": work.get("protagonistTeam") or [],
+                "antagonistTeam": work.get("antagonistTeam") or [],
+                "skillsAndMechanics": work.get("skillsAndMechanics") or [],
+                "goldenFinger": work.get("goldenFinger") or "",
+                "coreAppeal": work.get("coreAppeal") or [],
+                "reusablePatterns": work.get("reusablePatterns") or [],
+            },
+        },
+    )
+
+
+def _work_analysis_user_prompt(date: str, cycle_day: int = 1, cycle_work: dict | None = None) -> str:
+    focus_title, focus_instruction = _work_day_focus(cycle_day)
+    if cycle_work:
+        selection_instruction = f"""
+这是同一部作品三日拆解的第 {cycle_day} 天，今日主题：{focus_title}。
+本周期作品已经确定，不要更换作品：
+{json.dumps(cycle_work, ensure_ascii=False)}
+""".strip()
+    else:
+        selection_instruction = f"""
+这是同一部作品三日拆解的第 1 天，今日主题：{focus_title}。
+请在“小说、游戏、电影”三类中随机选择一个热门作品，开启新的三日拆解周期。
+""".strip()
     return f"""
 今天日期：{date}
-
-请在“小说、游戏、电影”三类中随机选择一个热门作品，生成每日作品拆解包。
+{selection_instruction}
+{focus_instruction}
 
 输出 JSON 结构：
 {{
@@ -531,6 +603,7 @@ def _work_analysis_user_prompt(date: str) -> str:
 硬性要求：
 - 所有字段必须使用自然中文。
 - 每天只拆一个作品，不要同时拆多个。
+- 三天内必须围绕同一部作品：第 1 天作品总拆解，第 2 天套路提炼，第 3 天改写练习。
 - 优先选择中国读者较熟悉、讨论度高、适合学习商业叙事的作品。
 - 避免只复述剧情；每一项都要服务“我怎么把这个套路改写进自己的网文”。
 - 主角团、反派团、技能/机制、金手指、爽点、改写练习都必须出现。
@@ -576,12 +649,14 @@ async def generate_brief_for_date(date: str, cfg, app_base_url: str = "http://lo
     existing = get_brief_by_date(date)
     if existing and not force:
         return existing
+    cycle_day, cycle_work = _work_cycle_for_date(date)
     provider = get_text_provider(cfg.text)
-    raw = await provider.chat(_work_analysis_system_prompt(), _work_analysis_user_prompt(date))
+    raw = await provider.chat(_work_analysis_system_prompt(), _work_analysis_user_prompt(date, cycle_day, cycle_work))
     brief = _normalize_work_analysis(parse_json_loose(raw))
+    _save_work_cycle(date, brief, cycle_day, cycle_work)
     html_body = render_brief_html(date, brief, app_base_url)
     text_body = render_brief_text(date, brief)
-    subject = f"每日作品拆解包 {date}"
+    subject = f"每日作品拆解包 第{cycle_day}天 {date}"
     with connect() as conn:
         conn.execute(
             """

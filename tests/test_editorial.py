@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from cryptography.fernet import Fernet
 
 from my_writing import db
-from my_writing.db import connect, init_db
+from my_writing.db import connect, get_config, init_db
 from my_writing.editorial import (
     CHANNEL_SOCIAL,
     CHANNEL_STORY,
@@ -263,7 +263,7 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
             brief = await generate_brief_for_date("2026-05-06", make_cfg(), app_base_url="http://localhost:3000")
 
         self.assertEqual(brief["status"], "draft")
-        self.assertEqual(brief["subject"], "每日作品拆解包 2026-05-06")
+        self.assertEqual(brief["subject"], "每日作品拆解包 第1天 2026-05-06")
         self.assertIn("庆余年", brief["html"])
         self.assertIn("主角团", brief["html"])
         self.assertIn("反派团", brief["html"])
@@ -271,6 +271,56 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("网文借鉴", brief["html"])
         self.assertIn("改写练习", brief["html"])
         provider.chat.assert_awaited_once()
+
+    async def test_work_analysis_reuses_same_work_for_three_day_cycle(self):
+        first_payload = self.work_analysis_payload("庆余年", "小说")
+        second_payload = self.work_analysis_payload("庆余年", "小说")
+        second_payload["headline"] = "第 2 天：拆《庆余年》的追读套路"
+
+        with patch("my_writing.editorial.get_text_provider") as provider_factory:
+            provider = provider_factory.return_value
+            provider.chat = AsyncMock(
+                side_effect=[
+                    json.dumps(first_payload, ensure_ascii=False),
+                    json.dumps(second_payload, ensure_ascii=False),
+                ]
+            )
+
+            await generate_brief_for_date("2026-05-06", make_cfg(), force=True)
+            await generate_brief_for_date("2026-05-07", make_cfg(), force=True)
+
+        second_prompt = provider.chat.await_args_list[1].args[1]
+        self.assertIn("第 2 天", second_prompt)
+        self.assertIn("套路提炼", second_prompt)
+        self.assertIn("庆余年", second_prompt)
+        cycle = get_config("editorial_work_cycle")
+        self.assertEqual(cycle["startDate"], "2026-05-06")
+        self.assertEqual(cycle["work"]["title"], "庆余年")
+
+    async def test_work_analysis_starts_new_cycle_after_three_days(self):
+        from my_writing.db import set_config
+
+        set_config(
+            "editorial_work_cycle",
+            {
+                "startDate": "2026-05-06",
+                "work": {"title": "庆余年", "sourceType": "小说", "genre": "架空权谋"},
+            },
+        )
+        payload = self.work_analysis_payload("盗梦空间", "电影")
+
+        with patch("my_writing.editorial.get_text_provider") as provider_factory:
+            provider = provider_factory.return_value
+            provider.chat = AsyncMock(return_value=json.dumps(payload, ensure_ascii=False))
+            await generate_brief_for_date("2026-05-09", make_cfg(), force=True)
+
+        prompt = provider.chat.await_args.args[1]
+        self.assertIn("第 1 天", prompt)
+        self.assertIn("随机选择", prompt)
+        self.assertNotIn("庆余年", prompt)
+        cycle = get_config("editorial_work_cycle")
+        self.assertEqual(cycle["startDate"], "2026-05-09")
+        self.assertEqual(cycle["work"]["title"], "盗梦空间")
 
     async def test_force_generate_work_analysis_replaces_existing_brief(self):
         with connect() as conn:
