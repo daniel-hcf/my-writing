@@ -180,15 +180,8 @@ async function buildEditorialSection() {
   });
 
   return el("div", { class: "card" }, [
-    el("h2", {}, "AI 编辑部"),
-    el("div", { class: "muted" }, "一键导入推荐 RSS 源，配置个人邮箱 SMTP，每天自动发送双频道素材简报。"),
-    el("div", { class: "field" }, [el("label", {}, "推荐源包（鼠标悬停可预览源列表）"), el("div", { class: "row" }, packButtons)]),
-    el("div", { class: "field-row" }, [
-      el("div", { class: "field" }, [el("label", {}, "手动新增源"), newSourceName]),
-      el("div", { class: "field" }, [el("label", {}, "RSS URL"), newSourceUrl]),
-    ]),
-    el("div", { class: "row" }, [newSourceChannel, addSourceBtn]),
-    sourceList,
+    el("h2", {}, "每日作品拆解"),
+    el("div", { class: "muted" }, "配置个人邮箱 SMTP 和发送时间；系统每天随机拆一个热门小说、游戏或电影，不再依赖 RSS 收集。"),
     el("div", { class: "field-row" }, [
       el("div", { class: "field" }, [el("label", {}, "发送时间"), sendTime]),
       el("label", { class: "check-row" }, [autoSend, " 自动发送，错过后下次启动补发"]),
@@ -207,6 +200,16 @@ async function buildEditorialSection() {
     ]),
     el("label", { class: "check-row" }, [useTls, " 使用 SSL/TLS（多数个人邮箱建议开启）"]),
     el("div", { class: "row" }, [saveBtn, testBtn]),
+    el("details", { style: "margin-top:16px;" }, [
+      el("summary", {}, "旧 RSS 素材库维护（可选）"),
+      el("div", { class: "field" }, [el("label", {}, "推荐源包（仅用于旧素材库）"), el("div", { class: "row" }, packButtons)]),
+      el("div", { class: "field-row" }, [
+        el("div", { class: "field" }, [el("label", {}, "手动新增源"), newSourceName]),
+        el("div", { class: "field" }, [el("label", {}, "RSS URL"), newSourceUrl]),
+      ]),
+      el("div", { class: "row" }, [newSourceChannel, addSourceBtn]),
+      sourceList,
+    ]),
   ]);
 }
 

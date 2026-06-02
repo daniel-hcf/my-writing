@@ -22,6 +22,7 @@ from my_writing.editorial import (
     list_source_packs,
     load_smtp_config,
     parse_feed_xml,
+    run_due_editorial_job,
     send_brief_email,
     upsert_material,
 )
@@ -181,6 +182,7 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(item["displaySummary"].endswith("..."))
         self.assertEqual(item["summary"], long_summary.strip())
 
+    @unittest.skip("legacy RSS brief prompt behavior replaced by daily work analysis")
     async def test_brief_prompt_uses_short_summary_for_long_reddit_posts(self):
         source = create_source("Reddit NoSleep", "https://example.com/reddit.xml", CHANNEL_STORY)
         upsert_material(
@@ -210,8 +212,8 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(len(prompt), 2500)
         self.assertIn("...", prompt)
 
-    def test_brief_prompt_requires_chinese_translation_for_english_sources(self):
-        from my_writing.editorial import _brief_system_prompt, _brief_user_prompt, _material_prompt
+    def test_work_analysis_prompt_targets_webnovel_reuse_fields(self):
+        from my_writing.editorial import _material_prompt, _work_analysis_system_prompt, _work_analysis_user_prompt
 
         material = {
             "id": 1,
@@ -222,16 +224,104 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
             "url": "https://example.com/island",
         }
 
-        prompt = _brief_system_prompt() + "\n" + _brief_user_prompt([material])
-        self.assertIn("中文", prompt)
-        self.assertIn("翻译", prompt)
-        self.assertIn("translatedTitle", prompt)
+        prompt = _work_analysis_system_prompt() + "\n" + _work_analysis_user_prompt("2026-05-06")
+        for text in ("小说", "游戏", "电影", "剧情梗概", "技能", "主角团", "反派团", "金手指", "爽点", "改写练习"):
+            self.assertIn(text, prompt)
 
         deep_system, deep_user = _material_prompt(material, "deep")
         ideas_system, ideas_user = _material_prompt(material, "ideas")
         self.assertIn("中文", deep_system + deep_user)
         self.assertIn("中文", ideas_system + ideas_user)
 
+    def work_analysis_payload(self, title: str = "庆余年", source_type: str = "小说") -> dict:
+        return {
+            "headline": f"今天拆《{title}》：金手指不是答案，而是撬动剧情的杠杆",
+            "work": {
+                "title": title,
+                "sourceType": source_type,
+                "genre": "架空权谋",
+                "plotSummary": "主角带着额外认知进入高压世界，在身世谜团和阵营博弈中升级。",
+                "protagonistTeam": ["主角：聪明会演，能用信息差拆局", "护道者：沉默但可靠，提供安全感"],
+                "antagonistTeam": ["终极掌权者：制造长期压迫", "近身反派：不断制造短线麻烦"],
+                "skillsAndMechanics": ["情报网", "身份伪装", "诗词降维打击"],
+                "goldenFinger": "现代知识、隐藏身世、顶级护道者共同组成复合金手指。",
+                "coreAppeal": ["扮猪吃虎", "权谋反转", "身份揭晓"],
+                "reusablePatterns": ["让金手指先制造优势，再引来更高层级的压迫", "主角团每个人负责一种爽点"],
+                "rewriteExercise": {
+                    "prompt": "把现代知识金手指改写成都市异能创业局。",
+                    "constraints": ["保留隐藏身世", "安排一个强压迫反派"],
+                },
+            },
+        }
+
+    async def test_generate_brief_creates_work_analysis_without_rss_materials(self):
+        payload = self.work_analysis_payload()
+
+        with patch("my_writing.editorial.get_text_provider") as provider_factory:
+            provider = provider_factory.return_value
+            provider.chat = AsyncMock(return_value=json.dumps(payload, ensure_ascii=False))
+            brief = await generate_brief_for_date("2026-05-06", make_cfg(), app_base_url="http://localhost:3000")
+
+        self.assertEqual(brief["status"], "draft")
+        self.assertEqual(brief["subject"], "每日作品拆解包 2026-05-06")
+        self.assertIn("庆余年", brief["html"])
+        self.assertIn("主角团", brief["html"])
+        self.assertIn("反派团", brief["html"])
+        self.assertIn("金手指", brief["html"])
+        self.assertIn("网文借鉴", brief["html"])
+        self.assertIn("改写练习", brief["html"])
+        provider.chat.assert_awaited_once()
+
+    async def test_force_generate_work_analysis_replaces_existing_brief(self):
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO brief_runs (date, status, subject, html, text, created_at, sent_at)
+                VALUES (?, 'sent', ?, ?, ?, ?, ?)
+                """,
+                (
+                    "2026-05-06",
+                    "AI 编辑部每日简报 2026-05-06",
+                    "<p>old</p>",
+                    "old",
+                    "2026-05-06T08:00:00",
+                    "2026-05-06T08:01:00",
+                ),
+            )
+        payload = self.work_analysis_payload("盗梦空间", "电影")
+
+        with patch("my_writing.editorial.get_text_provider") as provider_factory:
+            provider = provider_factory.return_value
+            provider.chat = AsyncMock(return_value=json.dumps(payload, ensure_ascii=False))
+            brief = await generate_brief_for_date("2026-05-06", make_cfg(), force=True)
+
+        self.assertEqual(brief["status"], "draft")
+        self.assertIsNone(brief["sentAt"])
+        self.assertNotEqual(brief["createdAt"], "2026-05-06T08:00:00")
+        self.assertIn("盗梦空间", brief["html"])
+        with connect() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) c FROM brief_runs").fetchone()["c"], 1)
+
+    async def test_due_editorial_job_generates_work_analysis_without_fetching_rss(self):
+        payload = self.work_analysis_payload("哈利波特", "小说")
+
+        with patch("my_writing.editorial.get_text_provider") as provider_factory:
+            provider = provider_factory.return_value
+            provider.chat = AsyncMock(return_value=json.dumps(payload, ensure_ascii=False))
+            with patch("my_writing.editorial.fetch_enabled_sources", new_callable=AsyncMock) as fetch:
+                with patch("my_writing.editorial.datetime") as dt:
+                    dt.now.return_value.strftime.side_effect = lambda fmt: {
+                        "%Y-%m-%d": "2026-05-06",
+                        "%H:%M": "09:00",
+                    }[fmt]
+                    dt.now.return_value.isoformat.return_value = "2026-05-06T09:00:00"
+                    result = await run_due_editorial_job(make_cfg(), app_base_url="http://localhost:3000")
+
+        self.assertTrue(result["ran"])
+        self.assertIn("哈利波特", result["brief"]["html"])
+        fetch.assert_not_awaited()
+
+    @unittest.skip("legacy RSS brief behavior replaced by daily work analysis")
     async def test_generate_brief_classifies_two_channels_and_saves_email_html(self):
         social_source = create_source("Reuters Tech", "https://example.com/social.xml", CHANNEL_SOCIAL)
         story_source = create_source("Atlas Obscura", "https://example.com/story.xml", CHANNEL_STORY)
@@ -309,6 +399,7 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(rows[0]["fiction_fit"], "中")
         self.assertIn("档案馆员", rows[1]["fiction_angle"])
 
+    @unittest.skip("legacy RSS brief behavior replaced by daily work analysis")
     async def test_force_generate_brief_replaces_existing_empty_brief(self):
         with connect() as conn:
             conn.execute(
@@ -364,6 +455,7 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         with connect() as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) c FROM brief_runs").fetchone()["c"], 1)
 
+    @unittest.skip("legacy RSS brief behavior replaced by daily work analysis")
     async def test_force_generate_updates_existing_brief_timestamp_and_resets_sent_status(self):
         with connect() as conn:
             conn.execute(
@@ -418,6 +510,7 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(brief["createdAt"], "2026-05-06T08:00:00")
         self.assertIn("重新抓取后的素材进入简报", brief["html"])
 
+    @unittest.skip("legacy RSS brief behavior replaced by daily work analysis")
     async def test_generate_brief_uses_materials_collected_today_even_if_published_earlier(self):
         source = create_source("Public Domain Review", "https://example.com/story.xml", CHANNEL_STORY)
         material_id = upsert_material(

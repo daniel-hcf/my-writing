@@ -493,27 +493,95 @@ def _brief_user_prompt(materials: list[dict]) -> str:
 """.strip()
 
 
+def _work_analysis_system_prompt() -> str:
+    return (
+        "你是用户的网文创作拆解编辑。每天随机选择一个大众熟悉、适合创作借鉴的热门小说、游戏或电影，"
+        "把它拆成可复用的网文写作素材包。不要写百科词条，要提炼爽点、压迫、升级机制、主角团分工、"
+        "反派团功能、技能或世界机制、金手指和可改写套路。只输出合法 JSON，不要 Markdown。"
+    )
+
+
+def _work_analysis_user_prompt(date: str) -> str:
+    return f"""
+今天日期：{date}
+
+请在“小说、游戏、电影”三类中随机选择一个热门作品，生成每日作品拆解包。
+
+输出 JSON 结构：
+{{
+  "headline": "一句话标题，点出今天可偷师的创作技巧",
+  "work": {{
+    "title": "作品名",
+    "sourceType": "小说/游戏/电影",
+    "genre": "类型或题材",
+    "plotSummary": "剧情梗概，120-220字，重点讲主线驱动力和核心冲突",
+    "protagonistTeam": ["主角团成员或功能：特点、欲望、承担的爽点"],
+    "antagonistTeam": ["反派团成员或功能：压迫方式、阻碍作用、可借鉴点"],
+    "skillsAndMechanics": ["技能、能力、系统、规则、关卡、世界机制等"],
+    "goldenFinger": "金手指或优势机制；如果原作没有明确金手指，也要提炼主角的结构性优势",
+    "coreAppeal": ["爽点、奇观、情绪钩子或追读动力"],
+    "reusablePatterns": ["适合网文改写借鉴的套路或结构"],
+    "rewriteExercise": {{
+      "prompt": "给用户一个可直接练笔的改写任务",
+      "constraints": ["练习限制1", "练习限制2"]
+    }}
+  }}
+}}
+
+硬性要求：
+- 所有字段必须使用自然中文。
+- 每天只拆一个作品，不要同时拆多个。
+- 优先选择中国读者较熟悉、讨论度高、适合学习商业叙事的作品。
+- 避免只复述剧情；每一项都要服务“我怎么把这个套路改写进自己的网文”。
+- 主角团、反派团、技能/机制、金手指、爽点、改写练习都必须出现。
+""".strip()
+
+
+def _as_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def _normalize_work_analysis(data: dict) -> dict:
+    work = data.get("work") if isinstance(data.get("work"), dict) else data
+    rewrite = work.get("rewriteExercise") or work.get("rewrite_exercise") or {}
+    if not isinstance(rewrite, dict):
+        rewrite = {"prompt": str(rewrite), "constraints": []}
+    normalized = {
+        "headline": (data.get("headline") or work.get("headline") or "每日作品拆解包").strip(),
+        "work": {
+            "title": (work.get("title") or "未命名作品").strip(),
+            "sourceType": (work.get("sourceType") or work.get("source_type") or "作品").strip(),
+            "genre": (work.get("genre") or "未分类").strip(),
+            "plotSummary": (work.get("plotSummary") or work.get("plot_summary") or "").strip(),
+            "protagonistTeam": _as_list(work.get("protagonistTeam") or work.get("protagonist_team")),
+            "antagonistTeam": _as_list(work.get("antagonistTeam") or work.get("antagonist_team")),
+            "skillsAndMechanics": _as_list(work.get("skillsAndMechanics") or work.get("skills_and_mechanics")),
+            "goldenFinger": (work.get("goldenFinger") or work.get("golden_finger") or "").strip(),
+            "coreAppeal": _as_list(work.get("coreAppeal") or work.get("core_appeal")),
+            "reusablePatterns": _as_list(work.get("reusablePatterns") or work.get("reusable_patterns")),
+            "rewriteExercise": {
+                "prompt": (rewrite.get("prompt") or "").strip(),
+                "constraints": _as_list(rewrite.get("constraints")),
+            },
+        },
+    }
+    return normalized
+
+
 async def generate_brief_for_date(date: str, cfg, app_base_url: str = "http://localhost:3000", force: bool = False) -> dict:
     existing = get_brief_by_date(date)
     if existing and not force:
         return existing
-    materials = _materials_for_brief(date)
-    if not materials:
-        brief = {
-            "headline": "今日暂无新素材",
-            "sections": [
-                {"channel": CHANNEL_SOCIAL, "items": []},
-                {"channel": CHANNEL_STORY, "items": []},
-            ],
-        }
-    else:
-        provider = get_text_provider(cfg.text)
-        raw = await provider.chat(_brief_system_prompt(), _brief_user_prompt(materials))
-        brief = parse_json_loose(raw)
-        _apply_brief_annotations(brief)
+    provider = get_text_provider(cfg.text)
+    raw = await provider.chat(_work_analysis_system_prompt(), _work_analysis_user_prompt(date))
+    brief = _normalize_work_analysis(parse_json_loose(raw))
     html_body = render_brief_html(date, brief, app_base_url)
     text_body = render_brief_text(date, brief)
-    subject = f"AI 编辑部每日简报 {date}"
+    subject = f"每日作品拆解包 {date}"
     with connect() as conn:
         conn.execute(
             """
@@ -571,7 +639,52 @@ def _material_by_id_map() -> dict[int, dict]:
     return {row["id"]: material_row_to_dict(row) for row in rows}
 
 
+def _html_list(items: list[str]) -> str:
+    if not items:
+        return "<p class=\"empty\">未提供</p>"
+    return "<ul>" + "".join(f"<li>{html.escape(item)}</li>" for item in items) + "</ul>"
+
+
+def _render_work_analysis_html(date: str, brief: dict) -> str:
+    work = brief.get("work") or {}
+    rewrite = work.get("rewriteExercise") or {}
+    constraints = rewrite.get("constraints") or []
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #202124; line-height: 1.65; }}
+.wrap {{ max-width: 760px; margin: 0 auto; padding: 24px; }}
+h1 {{ font-size: 24px; margin-bottom: 4px; }}
+h2 {{ border-top: 1px solid #ddd; padding-top: 20px; margin-top: 24px; }}
+.meta, .empty {{ color: #666; }}
+.hero {{ background: #f8fafc; border-left: 4px solid #2563eb; padding: 12px 14px; margin: 16px 0; }}
+.tag {{ display: inline-block; background: #eef2ff; border-radius: 999px; padding: 2px 9px; margin-right: 6px; color: #3730a3; }}
+.practice {{ background: #fff7ed; border-left: 4px solid #f97316; padding: 12px 14px; }}
+li {{ margin: 4px 0; }}
+</style></head><body><div class="wrap">
+<h1>{html.escape(brief.get("headline") or "每日作品拆解包")}</h1>
+<p class="meta">{html.escape(date)} · {html.escape(work.get("sourceType") or "作品")} · {html.escape(work.get("genre") or "未分类")}</p>
+<div class="hero">
+  <h2>{html.escape(work.get("title") or "未命名作品")}</h2>
+  <p>{html.escape(work.get("plotSummary") or "暂无剧情梗概")}</p>
+</div>
+<h2>主角团</h2>{_html_list(work.get("protagonistTeam") or [])}
+<h2>反派团</h2>{_html_list(work.get("antagonistTeam") or [])}
+<h2>技能 / 机制</h2>{_html_list(work.get("skillsAndMechanics") or [])}
+<h2>金手指</h2><p>{html.escape(work.get("goldenFinger") or "未提炼")}</p>
+<h2>爽点</h2>{_html_list(work.get("coreAppeal") or [])}
+<h2>网文借鉴</h2>{_html_list(work.get("reusablePatterns") or [])}
+<h2>改写练习</h2>
+<div class="practice">
+  <p>{html.escape(rewrite.get("prompt") or "请将今天的作品机制改写成一个新的网文开场。")}</p>
+  {_html_list(constraints)}
+</div>
+</div></body></html>"""
+
+
 def render_brief_html(date: str, brief: dict, app_base_url: str) -> str:
+    if isinstance(brief.get("work"), dict):
+        return _render_work_analysis_html(date, brief)
     materials = _material_by_id_map()
     sections = []
     for channel in (CHANNEL_SOCIAL, CHANNEL_STORY):
@@ -630,6 +743,39 @@ a {{ color: #0b57d0; }}
 
 
 def render_brief_text(date: str, brief: dict) -> str:
+    if isinstance(brief.get("work"), dict):
+        work = brief.get("work") or {}
+        rewrite = work.get("rewriteExercise") or {}
+        lines = [
+            brief.get("headline") or "每日作品拆解包",
+            date,
+            f"{work.get('title') or '未命名作品'} · {work.get('sourceType') or '作品'} · {work.get('genre') or '未分类'}",
+            "",
+            "剧情梗概：",
+            work.get("plotSummary") or "暂无",
+            "",
+            "主角团：",
+            *[f"- {item}" for item in (work.get("protagonistTeam") or [])],
+            "",
+            "反派团：",
+            *[f"- {item}" for item in (work.get("antagonistTeam") or [])],
+            "",
+            "技能/机制：",
+            *[f"- {item}" for item in (work.get("skillsAndMechanics") or [])],
+            "",
+            f"金手指：{work.get('goldenFinger') or '未提炼'}",
+            "",
+            "爽点：",
+            *[f"- {item}" for item in (work.get("coreAppeal") or [])],
+            "",
+            "网文借鉴：",
+            *[f"- {item}" for item in (work.get("reusablePatterns") or [])],
+            "",
+            "改写练习：",
+            rewrite.get("prompt") or "请将今天的作品机制改写成一个新的网文开场。",
+            *[f"- {item}" for item in (rewrite.get("constraints") or [])],
+        ]
+        return "\n".join(lines)
     lines = [brief.get("headline") or "AI 编辑部每日简报", date, ""]
     for section in brief.get("sections", []):
         lines.append(CHANNEL_LABELS.get(section.get("channel"), section.get("channel", "")))
@@ -854,7 +1000,6 @@ async def run_due_editorial_job(cfg, app_base_url: str = "http://localhost:3000"
         return {"ran": False, "reason": "not due"}
     brief = get_brief_by_date(today)
     if not brief:
-        await fetch_enabled_sources()
         brief = await generate_brief_for_date(today, cfg, app_base_url=app_base_url)
     if brief["status"] != "sent" and load_smtp_config(mask_secret=False)["configured"]:
         try:

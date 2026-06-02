@@ -24,7 +24,9 @@ class FrontendContractsTest(unittest.TestCase):
     def test_editorial_page_makes_regeneration_visible(self):
         source = (ROOT / "web" / "js" / "views" / "editorial.js").read_text(encoding="utf-8")
 
-        self.assertIn("重新生成今日简报", source)
+        self.assertIn("每日作品拆解", source)
+        self.assertIn("重新生成今日拆解", source)
+        self.assertNotIn("立即抓取RSS", source)
         self.assertIn("brief.createdAt", source)
         self.assertIn("brief.sentAt", source)
         self.assertIn("briefBtn.disabled = false", source)

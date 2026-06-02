@@ -35,38 +35,26 @@ async function renderDashboard(root) {
     tabs.appendChild(btn);
   }
 
-  const fetchBtn = el("button", { class: "btn secondary" }, "立即抓取RSS");
-  fetchBtn.addEventListener("click", async () => {
-    fetchBtn.disabled = true;
-    fetchBtn.textContent = "抓取中...";
-    try {
-      const result = await api.fetchEditorialSources();
-      showToast(`抓取完成：新增 ${result.inserted} 条素材`);
-      await renderDashboard(root);
-    } catch (e) {
-      showToast(`抓取失败：${e.message}`, "error");
-    }
-  });
-
-  const briefBtn = el("button", { class: "btn" }, "重新生成今日简报");
+  const briefBtn = el("button", { class: "btn" }, "重新生成今日拆解");
   briefBtn.addEventListener("click", async () => {
     briefBtn.disabled = true;
     briefBtn.textContent = "生成中...";
     try {
       const brief = await api.generateTodayBrief();
-      showToast(`今日简报已重新生成：${formatDateTime(brief.createdAt)}`);
+      showToast(`今日作品拆解已重新生成：${formatDateTime(brief.createdAt)}`);
       await renderDashboard(root);
     } catch (e) {
       showToast(`生成失败：${e.message}`, "error");
       briefBtn.disabled = false;
-      briefBtn.textContent = "重新生成今日简报";
+      briefBtn.textContent = "重新生成今日拆解";
     }
   });
 
   const card = el("div", { class: "card" }, [
-    el("h2", {}, "素材简报"),
-    el("div", { class: "muted" }, "每天从 RSS 收集两类素材：当前社会热点，以及可转化成小说的故事素材。"),
-    el("div", { class: "row", style: "margin-top:12px;" }, [fetchBtn, briefBtn]),
+    el("h2", {}, "每日作品拆解"),
+    el("div", { class: "muted" }, "每天随机拆一个热门小说、游戏或电影，提炼剧情梗概、主角团、反派团、技能机制、金手指和可借鉴套路。"),
+    el("div", { class: "row", style: "margin-top:12px;" }, [briefBtn]),
+    el("h3", {}, "历史素材库"),
     tabs,
     listNode,
   ]);
@@ -80,7 +68,7 @@ function renderMaterialList(root, materials, channel) {
   const filtered = channel === "all" ? materials : materials.filter((item) => item.channel === channel);
   root.innerHTML = "";
   if (!filtered.length) {
-    root.appendChild(el("div", { class: "empty" }, "还没有素材。可以先去设置页导入推荐源包，再立即抓取 RSS。"));
+    root.appendChild(el("div", { class: "empty" }, "旧 RSS 素材库目前为空。每日作品拆解不依赖这里的素材。"));
     return;
   }
   filtered.forEach((item) => {
@@ -108,7 +96,7 @@ function renderMaterialList(root, materials, channel) {
 function renderBriefs(briefs) {
   const body = el("div");
   if (!briefs.length) {
-    body.appendChild(el("div", { class: "empty" }, "还没有历史简报。"));
+    body.appendChild(el("div", { class: "empty" }, "还没有历史拆解。"));
   } else {
     briefs.forEach((brief) => {
       const sendBtn = el("button", { class: "btn secondary btn-sm" }, brief.status === "sent" ? "重新发送" : "发送邮件");
@@ -139,7 +127,7 @@ function renderBriefs(briefs) {
       ]));
     });
   }
-  return el("div", { class: "card" }, [el("h2", {}, "历史简报"), body]);
+  return el("div", { class: "card" }, [el("h2", {}, "历史拆解"), body]);
 }
 
 function formatDateTime(value) {
