@@ -653,6 +653,10 @@ async def generate_brief_for_date(date: str, cfg, app_base_url: str = "http://lo
     provider = get_text_provider(cfg.text)
     raw = await provider.chat(_work_analysis_system_prompt(), _work_analysis_user_prompt(date, cycle_day, cycle_work))
     brief = _normalize_work_analysis(parse_json_loose(raw))
+    focus_title, focus_instruction = _work_day_focus(cycle_day)
+    brief["cycleDay"] = cycle_day
+    brief["cycleFocus"] = focus_title
+    brief["cycleInstruction"] = focus_instruction
     _save_work_cycle(date, brief, cycle_day, cycle_work)
     html_body = render_brief_html(date, brief, app_base_url)
     text_body = render_brief_text(date, brief)
@@ -724,6 +728,9 @@ def _render_work_analysis_html(date: str, brief: dict) -> str:
     work = brief.get("work") or {}
     rewrite = work.get("rewriteExercise") or {}
     constraints = rewrite.get("constraints") or []
+    cycle_day = int(brief.get("cycleDay") or 1)
+    cycle_focus = brief.get("cycleFocus") or _work_day_focus(cycle_day)[0]
+    cycle_instruction = brief.get("cycleInstruction") or _work_day_focus(cycle_day)[1]
     return f"""<!doctype html>
 <html><head><meta charset="utf-8">
 <style>
@@ -738,7 +745,11 @@ h2 {{ border-top: 1px solid #ddd; padding-top: 20px; margin-top: 24px; }}
 li {{ margin: 4px 0; }}
 </style></head><body><div class="wrap">
 <h1>{html.escape(brief.get("headline") or "每日作品拆解包")}</h1>
-<p class="meta">{html.escape(date)} · {html.escape(work.get("sourceType") or "作品")} · {html.escape(work.get("genre") or "未分类")}</p>
+<p class="meta">{html.escape(date)} · 第 {cycle_day} 天 · {html.escape(cycle_focus)} · {html.escape(work.get("sourceType") or "作品")} · {html.escape(work.get("genre") or "未分类")}</p>
+<div class="hero">
+  <strong>今日重点：第 {cycle_day} 天 · {html.escape(cycle_focus)}</strong>
+  <p>{html.escape(cycle_instruction)}</p>
+</div>
 <div class="hero">
   <h2>{html.escape(work.get("title") or "未命名作品")}</h2>
   <p>{html.escape(work.get("plotSummary") or "暂无剧情梗概")}</p>
@@ -821,9 +832,15 @@ def render_brief_text(date: str, brief: dict) -> str:
     if isinstance(brief.get("work"), dict):
         work = brief.get("work") or {}
         rewrite = work.get("rewriteExercise") or {}
+        cycle_day = int(brief.get("cycleDay") or 1)
+        cycle_focus = brief.get("cycleFocus") or _work_day_focus(cycle_day)[0]
+        cycle_instruction = brief.get("cycleInstruction") or _work_day_focus(cycle_day)[1]
         lines = [
             brief.get("headline") or "每日作品拆解包",
             date,
+            f"第 {cycle_day} 天 · {cycle_focus}",
+            cycle_instruction,
+            "",
             f"{work.get('title') or '未命名作品'} · {work.get('sourceType') or '作品'} · {work.get('genre') or '未分类'}",
             "",
             "剧情梗概：",

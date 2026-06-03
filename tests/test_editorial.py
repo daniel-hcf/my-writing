@@ -287,12 +287,14 @@ class EditorialTest(unittest.IsolatedAsyncioTestCase):
             )
 
             await generate_brief_for_date("2026-05-06", make_cfg(), force=True)
-            await generate_brief_for_date("2026-05-07", make_cfg(), force=True)
+            second_brief = await generate_brief_for_date("2026-05-07", make_cfg(), force=True)
 
         second_prompt = provider.chat.await_args_list[1].args[1]
         self.assertIn("第 2 天", second_prompt)
         self.assertIn("套路提炼", second_prompt)
         self.assertIn("庆余年", second_prompt)
+        self.assertIn("第 2 天", second_brief["html"])
+        self.assertIn("套路提炼", second_brief["html"])
         cycle = get_config("editorial_work_cycle")
         self.assertEqual(cycle["startDate"], "2026-05-06")
         self.assertEqual(cycle["work"]["title"], "庆余年")
